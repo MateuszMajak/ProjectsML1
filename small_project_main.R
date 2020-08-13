@@ -11,12 +11,14 @@ library(purrr)
 library(corrplot)
 library(DescTools)
 library(olsrr)
+library(mice)
+library(VIM)
 #getwd()
 #setwd("C:/Users/Admin/Documents/GIT/ProjectsML1")
 coffee_full <- read.csv("arabica_data_cleaned.csv")
-#library(dplyr)
 glimpse(coffee_full)
 
+#We create coffee dataset without clumsy data like row numbers, unique codes and columns with same informations.
 coffee <- coffee_full
 coffee$X                     <- NULL
 coffee$Species               <- NULL
@@ -34,26 +36,133 @@ coffee$Producer              <- NULL
 coffee$Owner.1               <- NULL
 coffee$In.Country.Partner    <- NULL
 coffee$Region                <- NULL
-coffee$Variety               <- NULL
 coffee$Altitude              <- NULL
 coffee$Certification.Body    <- NULL
-
-
-### !!!!!!!!! ###
-# Do przemyœlenia:
-table(coffee$Category.One.Defects)
-table(coffee$Category.Two.Defects)
-table(coffee$Processing.Method)
 
 # Counting NAs in every column
 colSums(is.na(coffee)) %>% 
   sort()
 
-glimpse(coffee)
+coffee %>% 
+  md.pattern(rotate.names = TRUE)
+# 1 NA in Quakers column and 227 NAs in each altitude column
+
+# Let's start with the column Quakers. There is one NA
+table(coffee$Quakers, useNA = "ifany")
+
+#We replace the missing value with the median
+coffee$Quakers[is.na(coffee$Quakers)] <- median(coffee$Quakers, na.rm=TRUE)
+
+#Let's look on NAs in altitudes columns
+ggplot(coffee,
+       aes(x = altitude_low_meters)) +
+  geom_histogram(fill = "blue",
+                 bins = 100) +
+  theme_bw()
+
+#There are 227 out of 1311 rows with NA altitudes
+#There are also 4 clear outliers - let's see them
+which(coffee$altitude_low_meters>=11000)
+which(coffee$altitude_high_meters>=11000)
+which(coffee$altitude_mean_meters>=11000)
+#They are the same rows
+
+#We assign outliers to the altitude_outliers vector
+altitude_outliers <- which(coffee$altitude_low_meters>=11000)
+
+coffee[altitude_outliers,]
+
+#Interesting information - Geisha coffee is one of the best and most expensive
+#coffee in the world. It is grown at high mountains.
+#There is a farm Café Takesi in Bolivia, that claims to be the world’s
+#highest coffee farm, at an elevation of 1,900 to 2,500 meters above sea level.
+
+#For us, it means that we should probably treat each value above 2500m as an outlier.
+#There are values very close to 2500m, so we will cut every value above 2650m
+altitude_outliers <- which(coffee$altitude_low_meters>=2650)
+altitude_outliers <- which(coffee$altitude_high_meters>=2650)
+altitude_outliers <- which(coffee$altitude_mean_meters>=2650)
+
+coffee[altitude_outliers,]
+
+#The rest of the data containing altitude outliers looks reliably
+#Thus, we will group outliers together with NAs - there is no 
+#possibility of coffee growing at such high altitudes
+coffee[altitude_outliers,"altitude_low_meters"]  <- NA
+coffee[altitude_outliers,"altitude_high_meters"] <- NA
+coffee[altitude_outliers,"altitude_mean_meters"] <- NA
+
+#Now we try to deal with NAs using multiple methods
+# replace missings for altitudes with sample average
+coffee <- coffee %>% 
+  # we create a new columns altitude_._meters.impute_mean
+  mutate(altitude_low_meters.impute_mean = ifelse(is.na(altitude_low_meters), 
+                                                  mean(altitude_low_meters, na.rm = TRUE),
+                                                  altitude_low_meters),
+         altitude_high_meters.impute_mean = ifelse(is.na(altitude_high_meters), 
+                                                  mean(altitude_high_meters, na.rm = TRUE),
+                                                  altitude_high_meters),
+         altitude_mean_meters.impute_mean = ifelse(is.na(altitude_mean_meters), 
+                                                   mean(altitude_mean_meters, na.rm = TRUE),
+                                                   altitude_mean_meters)
+         )
+
+
+# replace missings for altitudes with sample median
+coffee <- coffee %>% 
+  # we create a new columns altitude_._meters.impute_median
+  mutate(altitude_low_meters.impute_median = ifelse(is.na(altitude_low_meters), 
+                                                  median(altitude_low_meters, na.rm = TRUE),
+                                                  altitude_low_meters),
+         altitude_high_meters.impute_median = ifelse(is.na(altitude_high_meters), 
+                                                     median(altitude_high_meters, na.rm = TRUE),
+                                                     altitude_high_meters),
+         altitude_mean_meters.impute_median = ifelse(is.na(altitude_mean_meters),
+                                                     median(altitude_mean_meters, na.rm = TRUE),
+                                                     altitude_mean_meters)
+  )
+
+# replace missings for altitudes with means and medians in subgroups
+coffee <- coffee %>% 
+  # divide dataset into subgroups
+  group_by(Region) %>%
+  # we create a new column altitude_low_meters.impute.Gmean
+  mutate(altitude_low_meters.impute.Gmean = ifelse(is.na(altitude_low_meters),
+                                                   mean(altitude_low_meters, na.rm = TRUE),
+                                                   altitude_low_meters),
+         # a new column altitude_low_meters.impute.Gmed
+         altitude_low_meters.impute.Gmed = ifelse(is.na(altitude_low_meters),
+                                                  median(altitude_low_meters, na.rm = TRUE),
+                                                  altitude_low_meters),
+         # a new column altitude_high_meters.impute.Gmean
+         altitude_high_meters.impute.Gmean = ifelse(is.na(altitude_high_meters),
+                                                    median(altitude_high_meters, na.rm = TRUE),
+                                                    altitude_high_meters),
+         # a new column altitude_high_meters.impute.Gmed
+         altitude_high_meters.impute.Gmed = ifelse(is.na(altitude_high_meters), 
+                                                   mean(altitude_high_meters, na.rm = TRUE),
+                                                   altitude_high_meters),
+         # a new column altitude_mean_meters.impute.Gmean
+         altitude_mean_meters.impute.Gmean = ifelse(is.na(altitude_mean_meters),
+                                                    median(altitude_mean_meters, na.rm = TRUE),
+                                                    altitude_mean_meters),
+         # a new column altitude_mean_meters.impute.Gmed
+         altitude_mean_meters.impute.Gmed = ifelse(is.na(altitude_mean_meters), 
+                                                   mean(altitude_mean_meters, na.rm = TRUE),
+                                                   altitude_mean_meters)
+  ) %>% ungroup()
+
+coffee %>%
+  select(starts_with("altitude")) %>%
+  summary()
 
 #Let's look if the factors have some hidden NAs
-table(coffee$Color)
-#216 empty values and 51 of None level
+coffees_factors <- 
+  sapply(coffee, is.factor) %>% 
+  which() %>% 
+  names()
+
+coffees_factors
 
 table(coffee$Country.of.Origin)
 #1 empty value
@@ -67,52 +176,18 @@ table(coffee$Harvest.Year)
 table(coffee$Processing.Method)
 #152 empty values
 
+table(coffee$Color)
+#216 empty values and 51 of None level
+
 table(coffee$unit_of_measurement)
 #No NAs
-
-# Let's start with the column Quakers. There is one NA
-table(coffee$Quakers, useNA = "ifany")
-
-#We should probably replace the missing with the median
-median(coffee$Quakers, na.rm=TRUE)
-coffee$Quakers[is.na(coffee$Quakers)] <- 0
-
-#Let's look on NAs in altitudes columns
-table(coffee$altitude_low_meters, useNA = "ifany")
-table(coffee$altitude_high_meters, useNA = "ifany")
-table(coffee$altitude_mean_meters, useNA = "ifany")
-
-ggplot(coffee,
-       aes(x = altitude_low_meters)) +
-  geom_histogram(fill = "blue",
-                 bins = 100) +
-  theme_bw()
-#There are 227 out of 1311 rows with NA altitudes
-#There are also 4 outliers - let's see them
-which(coffee$altitude_low_meters>=11000)
-which(coffee$altitude_high_meters>=11000)
-which(coffee$altitude_mean_meters>=11000)
-#They are the same rows
-altitude_outliers <- which(coffee$altitude_low_meters>=11000)
-coffee[altitude_outliers,]
-#The rest of the data containing altitude outliers looks reliably
-#Thus, we will keep it and find out if the altitude play the role in the analysis
-
-#Let's look for outliers considering Total.Cup.Point result
-ggplot(coffee,
-       aes(x = Total.Cup.Points)) +
-  geom_histogram(fill = "blue",
-                 bins = 100) +
-  theme_bw()
-# We delete outlier (Total.Cup.Points==0)
-coffee <- coffee[!(coffee$Total.Cup.Points==0),]
 
 #Let's look on the Country.of.Origin
 table(coffee$Country.of.Origin)
 
 #There is one coffee without name of the Country of origin. Let's delete it
 coffee <- coffee[!coffee$Country.of.Origin=="",]
-
+coffee$Country.of.Origin <- factor(coffee$Country.of.Origin)
 #Maybe the region will be more helpful that country, so we create Region column
 table(coffee$Country.of.Origin)
 coffee[,"Region"] <- NA
@@ -177,80 +252,6 @@ coffee[which(coffee$Country.of.Origin=="Mexico"|
        "Region"] <- "North America"
 
 coffee$Region <- as.factor(coffee$Region)
-
-#Now let's look on the Harvest.Year
-table(coffee$Harvest.Year)
-#Data need some cleaning
-coffee$Harvest.Year <- coffee$Harvest.Year
-coffee$Harvest.Year <- as.character(coffee$Harvest.Year)
-table(coffee$Harvest.Year)
-
-coffee[which(coffee$Harvest.Year=="4T/2010"|
-               coffee$Harvest.Year=="23 July 2010"|
-               coffee$Harvest.Year=="4T/10"|
-               coffee$Harvest.Year=="March 2010"|
-               coffee$Harvest.Year=="4t/2010"|
-               coffee$Harvest.Year=="4T72010"|
-               coffee$Harvest.Year=="47/2010"
-             ),
-       "Harvest.Year"] <- "2010"
-
-coffee[which(coffee$Harvest.Year=="Sept 2009 - April 2010"|
-               coffee$Harvest.Year=="December 2009-March 2010"|
-               coffee$Harvest.Year=="2009/2010"|
-               coffee$Harvest.Year=="2009-2010"|
-               coffee$Harvest.Year=="2009 - 2010"|
-               coffee$Harvest.Year=="2009 / 2010"|
-               coffee$Harvest.Year=="Fall 2009"|
-               coffee$Harvest.Year=="08/09 crop"
-             ),
-       "Harvest.Year"] <- "2009/2010"
-
-coffee[which(coffee$Harvest.Year=="4t/2011"|
-               coffee$Harvest.Year=="January 2011"|
-               coffee$Harvest.Year=="3T/2011"|
-               coffee$Harvest.Year=="1t/2011"|
-               coffee$Harvest.Year==" 1T/2011"|
-               coffee$Harvest.Year=="Spring 2011 in Colombia."|
-               coffee$Harvest.Year=="Abril - Julio /2011"|
-               coffee$Harvest.Year=="1T/2011"
-             ),
-       "Harvest.Year"] <- "2011"
-
-coffee[which(coffee$Harvest.Year=="2010-2011"),"Harvest.Year"] <- "2010/2011"
-
-coffee[which(coffee$Harvest.Year=="2011/2012"),"Harvest.Year"] <- "Others"
-
-coffee[which(coffee$Harvest.Year=="2013/2014"),"Harvest.Year"] <- "2013/2014"
-
-coffee[which(coffee$Harvest.Year=="2016 / 2017"|
-               coffee$Harvest.Year=="2016/2017"),"Harvest.Year"] <- "2016/2017"
-
-coffee[which(coffee$Harvest.Year=="2018"|
-               coffee$Harvest.Year=="2017 / 2018"),"Harvest.Year"] <- "2017/2018"
-
-other_years <- which(coffee$Harvest.Year=="Mayo a Julio"|
-                       coffee$Harvest.Year=="mmm"|
-                       coffee$Harvest.Year=="TEST"|
-                       coffee$Harvest.Year=="Abril - Julio"|
-                       coffee$Harvest.Year=="August to December"|
-                       coffee$Harvest.Year=="May-August"|
-                       coffee$Harvest.Year=="January Through April"|
-                       coffee$Harvest.Year=="")
-coffee[other_years,]
-
-coffee[other_years,"Harvest.Year"] <- "Others"
-
-coffee$Harvest.Year <- factor(coffee$Harvest.Year)
-
-
-
-#Now let's look on the next factor - Color
-table(coffee$Color)
-#We should group NA and None together
-coffee[which(coffee$Color==""),"Color"] <- "None"
-
-coffee$Color <- factor(coffee$Color)
 
 #Now let's look on the Bag.Weight factor
 table(coffee$Bag.Weight)
@@ -329,9 +330,96 @@ coffee[which(coffee$Bag.Weight=="80 kg"),"Bag.Weight"]    <- ">60"
 
 coffee$Bag.Weight <- factor(coffee$Bag.Weight)
 
+#Now let's look on the Harvest.Year
+table(coffee$Harvest.Year)
+#Data need some cleaning
+coffee$Harvest.Year <- coffee$Harvest.Year
+coffee$Harvest.Year <- as.character(coffee$Harvest.Year)
+table(coffee$Harvest.Year)
+
+coffee[which(coffee$Harvest.Year=="4T/2010"|
+               coffee$Harvest.Year=="23 July 2010"|
+               coffee$Harvest.Year=="4T/10"|
+               coffee$Harvest.Year=="March 2010"|
+               coffee$Harvest.Year=="4t/2010"|
+               coffee$Harvest.Year=="4T72010"|
+               coffee$Harvest.Year=="47/2010"
+             ),
+       "Harvest.Year"] <- "2010"
+
+coffee[which(coffee$Harvest.Year=="Sept 2009 - April 2010"|
+               coffee$Harvest.Year=="December 2009-March 2010"|
+               coffee$Harvest.Year=="2009/2010"|
+               coffee$Harvest.Year=="2009-2010"|
+               coffee$Harvest.Year=="2009 - 2010"|
+               coffee$Harvest.Year=="2009 / 2010"|
+               coffee$Harvest.Year=="Fall 2009"|
+               coffee$Harvest.Year=="08/09 crop"
+             ),
+       "Harvest.Year"] <- "2009/2010"
+
+coffee[which(coffee$Harvest.Year=="4t/2011"|
+               coffee$Harvest.Year=="January 2011"|
+               coffee$Harvest.Year=="3T/2011"|
+               coffee$Harvest.Year=="1t/2011"|
+               coffee$Harvest.Year==" 1T/2011"|
+               coffee$Harvest.Year=="Spring 2011 in Colombia."|
+               coffee$Harvest.Year=="Abril - Julio /2011"|
+               coffee$Harvest.Year=="1T/2011"
+             ),
+       "Harvest.Year"] <- "2011"
+
+coffee[which(coffee$Harvest.Year=="2010-2011"),
+       "Harvest.Year"] <- "2010/2011"
+
+coffee[which(coffee$Harvest.Year=="2011/2012"),
+       "Harvest.Year"] <- "Others"
+
+coffee[which(coffee$Harvest.Year=="2013/2014"),
+       "Harvest.Year"] <- "2013/2014"
+
+coffee[which(coffee$Harvest.Year=="2016 / 2017"|
+               coffee$Harvest.Year=="2016/2017"),
+       "Harvest.Year"] <- "2016/2017"
+
+coffee[which(coffee$Harvest.Year=="2018"|
+               coffee$Harvest.Year=="2017 / 2018"),
+       "Harvest.Year"] <- "2017/2018"
+
+other_years <- which(coffee$Harvest.Year=="Mayo a Julio"|
+                       coffee$Harvest.Year=="mmm"|
+                       coffee$Harvest.Year=="TEST"|
+                       coffee$Harvest.Year=="Abril - Julio"|
+                       coffee$Harvest.Year=="August to December"|
+                       coffee$Harvest.Year=="May-August"|
+                       coffee$Harvest.Year=="January Through April"|
+                       coffee$Harvest.Year=="")
+coffee[other_years,]
+
+coffee[other_years,"Harvest.Year"] <- "Others"
+
+coffee$Harvest.Year <- factor(coffee$Harvest.Year)
+
 #Now let's look on the  Processing.Method factor
 table(coffee$Processing.Method)
+#We group NA and Other together
+coffee[which(coffee$Processing.Method==""),"Processing.Method"] <- "Other"
 
+#Now let's look on the next factor - Color
+table(coffee$Color)
+#We should group NA and None together
+coffee[which(coffee$Color==""),"Color"] <- "None"
+
+coffee$Color <- factor(coffee$Color)
+
+#Now let's look for outliers considering Total.Cup.Point result
+ggplot(coffee,
+       aes(x = Total.Cup.Points)) +
+  geom_histogram(fill = "blue",
+                 bins = 100) +
+  theme_bw()
+# There is one outlier in our dependent variable - We can delete (Total.Cup.Points==0) or replace it with the mean
+coffee <- coffee[!(coffee$Total.Cup.Points==0),]
 
 # Now let's divide the set into learning and testing sample
 set.seed(987654321)
@@ -473,7 +561,7 @@ coffees_anova_all_categorical
 
 #relation between Color levels and Total.Cup.Points
 ggplot(coffees_train,
-       aes(x = Color,
+       aes(x = Certification.Body,
            y = Total.Cup.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
@@ -516,8 +604,8 @@ ggplot(coffees_train,
   geom_boxplot(fill = "red") +
   theme_bw()
 
-#There are no clear relationships between variables and Bag.Weight and unit_of_measurement
-#can be higly correlated with Processing_method and Region
+#There are no clear relationships between variables. Bag.Weight and unit_of_measurement
+#can be also higly correlated with Processing_method and Region
 #Let's check it with the Cramer's V coefficient
 DescTools::CramerV(coffees_train$unit_of_measurement,
                    coffees_train$Region)
@@ -525,7 +613,7 @@ DescTools::CramerV(coffees_train$unit_of_measurement,
 
 DescTools::CramerV(coffees_train$unit_of_measurement,
                    coffees_train$Processing.Method)
-#low association between unit_of_measurement and Processing.Method
+# NaN
 
 DescTools::CramerV(coffees_train$Bag.Weight,
                    coffees_train$Region)
@@ -533,23 +621,20 @@ DescTools::CramerV(coffees_train$Bag.Weight,
 
 DescTools::CramerV(coffees_train$Bag.Weight,
                    coffees_train$Processing.Method)
-#low association between Bag.Weight and Processing.Method
+#Nan
 
 DescTools::CramerV(coffees_train$Bag.Weight,
                    coffees_train$unit_of_measurement)
 #low association between Bag.Weight and unit_of_measurement
 
-
-#We will not use unit_of_measurement and Bag.Weight also, because th
-
-
+#We will not use unit_of_measurement and Bag.Weight, because of the correlation between them and the Region factor
 
 ggplot(coffees_train,
        aes(x = Processing.Method,
            y = Total.Cup.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
-
+#There are many Other values
 
 
 
