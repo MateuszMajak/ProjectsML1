@@ -13,31 +13,17 @@ library(DescTools)
 library(olsrr)
 library(mice)
 library(VIM)
+source("Mode.R")
 #getwd()
 #setwd("C:/Users/Admin/Documents/GIT/ProjectsML1")
-coffee_full <- read.csv("arabica_data_cleaned.csv")
+coffee_full <- read.csv("arabica_data_cleaned.csv",na.strings=c("","NA"))
 glimpse(coffee_full)
 
 #We create coffee dataset without clumsy data like row numbers, unique codes and columns with same informations.
 coffee <- coffee_full
-coffee$X                     <- NULL
-coffee$Species               <- NULL
-coffee$Certification.Address <- NULL
-coffee$Certification.Contact <- NULL
-coffee$Lot.Number            <- NULL
-coffee$Mill                  <- NULL
-coffee$ICO.Number            <- NULL
-coffee$Expiration            <- NULL
-coffee$Grading.Date          <- NULL
-coffee$Company               <- NULL
-coffee$Farm.Name             <- NULL
-coffee$Owner                 <- NULL
-coffee$Producer              <- NULL
-coffee$Owner.1               <- NULL
-coffee$In.Country.Partner    <- NULL
-coffee$Region                <- NULL
-coffee$Altitude              <- NULL
-coffee$Certification.Body    <- NULL
+coffee[,c("X","Species","Certification.Address","Certification.Contact","Lot.Number","Mill","ICO.Number","Expiration",
+          "Grading.Date","Company","Farm.Name","Owner","Producer","Owner.1","In.Country.Partner","Region",
+          "Altitude","Certification.Body","Harvest.Year")] <- NULL
 
 # Counting NAs in every column
 colSums(is.na(coffee)) %>% 
@@ -47,13 +33,15 @@ coffee %>%
   md.pattern(rotate.names = TRUE)
 # 1 NA in Quakers column and 227 NAs in each altitude column
 
+###
+#NAs in Numerical columns
 # Let's start with the column Quakers. There is one NA
 table(coffee$Quakers, useNA = "ifany")
 
 #We replace the missing value with the median
 coffee$Quakers[is.na(coffee$Quakers)] <- median(coffee$Quakers, na.rm=TRUE)
 
-#Let's look on NAs in altitudes columns
+#Let's look on altitudes data
 ggplot(coffee,
        aes(x = altitude_low_meters)) +
   geom_histogram(fill = "blue",
@@ -84,7 +72,6 @@ altitude_outliers <- which(coffee$altitude_high_meters>=2650)
 altitude_outliers <- which(coffee$altitude_mean_meters>=2650)
 
 coffee[altitude_outliers,]
-
 #The rest of the data containing altitude outliers looks reliably
 #Thus, we will group outliers together with NAs - there is no 
 #possibility of coffee growing at such high altitudes
@@ -125,7 +112,7 @@ coffee <- coffee %>%
 # replace missings for altitudes with means and medians in subgroups
 coffee <- coffee %>% 
   # divide dataset into subgroups
-  group_by(Region) %>%
+  group_by(Country.of.Origin) %>%
   # we create a new column altitude_low_meters.impute.Gmean
   mutate(altitude_low_meters.impute.Gmean = ifelse(is.na(altitude_low_meters),
                                                    mean(altitude_low_meters, na.rm = TRUE),
@@ -155,99 +142,98 @@ coffee <- coffee %>%
 coffee %>%
   select(starts_with("altitude")) %>%
   summary()
+#impute_median seems to be the closest imputations to the original dataset
+#means and medians in subgroups do not give better results
+#Thus, since now we will use altitude_high_meters.impute_median,
+#altitude_low_meters.impute_median and altitude_mean_meters.impute_median
+coffee$altitude_low_meters.impute.Gmean   <- NULL
+coffee$altitude_mean_meters.impute.Gmean  <- NULL
+coffee$altitude_high_meters.impute.Gmean  <- NULL
+coffee$altitude_low_meters.impute.Gmed    <- NULL
+coffee$altitude_high_meters.impute.Gmed   <- NULL
+coffee$altitude_mean_meters.impute.Gmed   <- NULL
 
-#Let's look if the factors have some hidden NAs
-coffees_factors <- 
-  sapply(coffee, is.factor) %>% 
-  which() %>% 
-  names()
-
-coffees_factors
-
-table(coffee$Country.of.Origin)
-#1 empty value
-
-table(coffee$Bag.Weight)
-#No NAs
-
-table(coffee$Harvest.Year)
-#47 empty values
-
-table(coffee$Processing.Method)
-#152 empty values
-
-table(coffee$Color)
-#216 empty values and 51 of None level
-
-table(coffee$unit_of_measurement)
-#No NAs
-
+###
+#NAs in Factor columns
+colSums(is.na(coffee)) %>% 
+  sort()
 #Let's look on the Country.of.Origin
 table(coffee$Country.of.Origin)
 
 #There is one coffee without name of the Country of origin. Let's delete it
-coffee <- coffee[!coffee$Country.of.Origin=="",]
-coffee$Country.of.Origin <- factor(coffee$Country.of.Origin)
-#Maybe the region will be more helpful that country, so we create Region column
-table(coffee$Country.of.Origin)
-coffee[,"Region"] <- NA
 
+coffee <- coffee %>% 
+  group_by(Processing.Method, Color) %>%
+  mutate(Country.of.Origin.impute.Gmode = if_else(is.na(Country.of.Origin), 
+                                        Mode(Country.of.Origin),
+                                        Country.of.Origin)) %>% 
+  ungroup()
+#Colombia assigned to NA
+#Only one observation was changed, so the distribution of Country.of.Origin.impute.Gmode
+#is very close to the the distribution of Country.of.Origin
+#Thus, we will use Country.of.Origin.impute.Gmode in the future analysis
+
+#Maybe the region will be more helpful that country, so we create Region column
+table(coffee$Country.of.Origin.impute.Gmode)
+coffee[,"Region"] <- NA
+coffee$Region <- as.character(coffee$Region)
+coffee$Country.of.Origin.impute.Gmode <- as.character(coffee$Country.of.Origin.impute.Gmode)
 #East Africa group
-coffee[which(coffee$Country.of.Origin=="Zambia"|
-               coffee$Country.of.Origin=="Uganda"|
-               coffee$Country.of.Origin=="Burundi"|
-               coffee$Country.of.Origin=="Rwanda"|
-               coffee$Country.of.Origin=="Malawi"|
-               coffee$Country.of.Origin=="Papua New Guinea"|
-               coffee$Country.of.Origin=="Mauritius"|
-               coffee$Country.of.Origin=="Ethiopia"|
-               coffee$Country.of.Origin=="Kenya"
+coffee[which(coffee$Country.of.Origin.impute.Gmode=="Zambia"|
+               coffee$Country.of.Origin.impute.Gmode=="Uganda"|
+               coffee$Country.of.Origin.impute.Gmode=="Burundi"|
+               coffee$Country.of.Origin.impute.Gmode=="Rwanda"|
+               coffee$Country.of.Origin.impute.Gmode=="Malawi"|
+               coffee$Country.of.Origin.impute.Gmode=="Papua New Guinea"|
+               coffee$Country.of.Origin.impute.Gmode=="Mauritius"|
+               coffee$Country.of.Origin.impute.Gmode=="Ethiopia"|
+               coffee$Country.of.Origin.impute.Gmode=="Kenya"
              ),
        "Region"] <- "East Africa"
 
 #West Africa
-coffee[which(coffee$Country.of.Origin=="Tanzania, United Republic Of"|
-               coffee$Country.of.Origin=="Cote d?Ivoire"
+coffee[which(coffee$Country.of.Origin.impute.Gmode=="Tanzania, United Republic Of"|
+               coffee$Country.of.Origin.impute.Gmode=="Cote d?Ivoire"
              ),
        "Region"] <- "West Africa"
 
 #Asia and Oceania
-coffee[which(coffee$Country.of.Origin=="Japan"|
-               coffee$Country.of.Origin=="Thailand"|
-               coffee$Country.of.Origin=="Vietnam"|
-               coffee$Country.of.Origin=="Myanmar"|
-               coffee$Country.of.Origin=="Philippines"|
-               coffee$Country.of.Origin=="Laos"|
-               coffee$Country.of.Origin=="China"|
-               coffee$Country.of.Origin=="India"|
-               coffee$Country.of.Origin=="Taiwan"|
-               coffee$Country.of.Origin=="Indonesia"|
-               coffee$Country.of.Origin=="Papua New Guinea"),
+coffee[which(coffee$Country.of.Origin.impute.Gmode=="Japan"|
+               coffee$Country.of.Origin.impute.Gmode=="Thailand"|
+               coffee$Country.of.Origin.impute.Gmode=="Vietnam"|
+               coffee$Country.of.Origin.impute.Gmode=="Myanmar"|
+               coffee$Country.of.Origin.impute.Gmode=="Philippines"|
+               coffee$Country.of.Origin.impute.Gmode=="Laos"|
+               coffee$Country.of.Origin.impute.Gmode=="China"|
+               coffee$Country.of.Origin.impute.Gmode=="India"|
+               coffee$Country.of.Origin.impute.Gmode=="Taiwan"|
+               coffee$Country.of.Origin.impute.Gmode=="Indonesia"|
+               coffee$Country.of.Origin.impute.Gmode=="Papua New Guinea"),
        "Region"] <- "Asia and Oceania"
 
 #Central America
-coffee[which(coffee$Country.of.Origin=="Costa Rica"|
-               coffee$Country.of.Origin=="Guatemala"|
-               coffee$Country.of.Origin=="Haiti"|
-               coffee$Country.of.Origin=="Honduras"|
-               coffee$Country.of.Origin=="Nicaragua"|
-               coffee$Country.of.Origin=="El Salvador"|
-               coffee$Country.of.Origin=="Panama"
+coffee[which(coffee$Country.of.Origin.impute.Gmode=="Costa Rica"|
+               coffee$Country.of.Origin.impute.Gmode=="Guatemala"|
+               coffee$Country.of.Origin.impute.Gmode=="Haiti"|
+               coffee$Country.of.Origin.impute.Gmode=="Honduras"|
+               coffee$Country.of.Origin.impute.Gmode=="Nicaragua"|
+               coffee$Country.of.Origin.impute.Gmode=="El Salvador"|
+               coffee$Country.of.Origin.impute.Gmode=="Panama"
              ),
        "Region"] <- "Central America"
 
 #South America
-coffee[which(coffee$Country.of.Origin=="Peru"|
-               coffee$Country.of.Origin=="Ecuador"|
-               coffee$Country.of.Origin=="Brazil"|
-               coffee$Country.of.Origin=="Colombia"
+coffee[which(coffee$Country.of.Origin.impute.Gmode=="Peru"|
+               coffee$Country.of.Origin.impute.Gmode=="Ecuador"|
+               coffee$Country.of.Origin.impute.Gmode=="Brazil"|
+               coffee$Country.of.Origin.impute.Gmode=="Colombia"
              ),
        "Region"] <- "South America"
 #North America
-coffee[which(coffee$Country.of.Origin=="Mexico"|
-               coffee$Country.of.Origin=="United States"|
-               coffee$Country.of.Origin=="United States (Hawaii)"|
-               coffee$Country.of.Origin=="United States (Puerto Rico)"
+coffee[which(coffee$Country.of.Origin.impute.Gmode=="Mexico"|
+               coffee$Country.of.Origin.impute.Gmode=="United States"|
+               coffee$Country.of.Origin.impute.Gmode=="United States (Hawaii)"|
+               coffee$Country.of.Origin.impute.Gmode=="United States (Puerto Rico)"
              ),
        "Region"] <- "North America"
 
@@ -330,87 +316,220 @@ coffee[which(coffee$Bag.Weight=="80 kg"),"Bag.Weight"]    <- ">60"
 
 coffee$Bag.Weight <- factor(coffee$Bag.Weight)
 
-#Now let's look on the Harvest.Year
-table(coffee$Harvest.Year)
-#Data need some cleaning
-coffee$Harvest.Year <- coffee$Harvest.Year
-coffee$Harvest.Year <- as.character(coffee$Harvest.Year)
-table(coffee$Harvest.Year)
-
-coffee[which(coffee$Harvest.Year=="4T/2010"|
-               coffee$Harvest.Year=="23 July 2010"|
-               coffee$Harvest.Year=="4T/10"|
-               coffee$Harvest.Year=="March 2010"|
-               coffee$Harvest.Year=="4t/2010"|
-               coffee$Harvest.Year=="4T72010"|
-               coffee$Harvest.Year=="47/2010"
-             ),
-       "Harvest.Year"] <- "2010"
-
-coffee[which(coffee$Harvest.Year=="Sept 2009 - April 2010"|
-               coffee$Harvest.Year=="December 2009-March 2010"|
-               coffee$Harvest.Year=="2009/2010"|
-               coffee$Harvest.Year=="2009-2010"|
-               coffee$Harvest.Year=="2009 - 2010"|
-               coffee$Harvest.Year=="2009 / 2010"|
-               coffee$Harvest.Year=="Fall 2009"|
-               coffee$Harvest.Year=="08/09 crop"
-             ),
-       "Harvest.Year"] <- "2009/2010"
-
-coffee[which(coffee$Harvest.Year=="4t/2011"|
-               coffee$Harvest.Year=="January 2011"|
-               coffee$Harvest.Year=="3T/2011"|
-               coffee$Harvest.Year=="1t/2011"|
-               coffee$Harvest.Year==" 1T/2011"|
-               coffee$Harvest.Year=="Spring 2011 in Colombia."|
-               coffee$Harvest.Year=="Abril - Julio /2011"|
-               coffee$Harvest.Year=="1T/2011"
-             ),
-       "Harvest.Year"] <- "2011"
-
-coffee[which(coffee$Harvest.Year=="2010-2011"),
-       "Harvest.Year"] <- "2010/2011"
-
-coffee[which(coffee$Harvest.Year=="2011/2012"),
-       "Harvest.Year"] <- "Others"
-
-coffee[which(coffee$Harvest.Year=="2013/2014"),
-       "Harvest.Year"] <- "2013/2014"
-
-coffee[which(coffee$Harvest.Year=="2016 / 2017"|
-               coffee$Harvest.Year=="2016/2017"),
-       "Harvest.Year"] <- "2016/2017"
-
-coffee[which(coffee$Harvest.Year=="2018"|
-               coffee$Harvest.Year=="2017 / 2018"),
-       "Harvest.Year"] <- "2017/2018"
-
-other_years <- which(coffee$Harvest.Year=="Mayo a Julio"|
-                       coffee$Harvest.Year=="mmm"|
-                       coffee$Harvest.Year=="TEST"|
-                       coffee$Harvest.Year=="Abril - Julio"|
-                       coffee$Harvest.Year=="August to December"|
-                       coffee$Harvest.Year=="May-August"|
-                       coffee$Harvest.Year=="January Through April"|
-                       coffee$Harvest.Year=="")
-coffee[other_years,]
-
-coffee[other_years,"Harvest.Year"] <- "Others"
-
-coffee$Harvest.Year <- factor(coffee$Harvest.Year)
+# #Now let's look on the Harvest.Year
+# #47 NAs in there
+# table(coffee$Harvest.Year)
+# #Data need some cleaning
+# coffee$Harvest.Year <- addNA(coffee$Harvest.Year)
+# levels(coffee$Harvest.Year)
+# levels(coffee$Harvest.Year)[47] <- "missing"
+# 
+# coffee$Harvest.Year <- as.character(coffee$Harvest.Year)
+# 
+# coffee[which(coffee$Harvest.Year=="4T/2010"|
+#                coffee$Harvest.Year=="23 July 2010"|
+#                coffee$Harvest.Year=="4T/10"|
+#                coffee$Harvest.Year=="March 2010"|
+#                coffee$Harvest.Year=="4t/2010"|
+#                coffee$Harvest.Year=="4T72010"|
+#                coffee$Harvest.Year=="47/2010"
+#              ),
+#        "Harvest.Year"] <- "2010"
+# 
+# coffee[which(coffee$Harvest.Year=="Sept 2009 - April 2010"|
+#                coffee$Harvest.Year=="December 2009-March 2010"|
+#                coffee$Harvest.Year=="2009/2010"|
+#                coffee$Harvest.Year=="2009-2010"|
+#                coffee$Harvest.Year=="2009 - 2010"|
+#                coffee$Harvest.Year=="2009 / 2010"|
+#                coffee$Harvest.Year=="Fall 2009"|
+#                coffee$Harvest.Year=="08/09 crop"
+#              ),
+#        "Harvest.Year"] <- "2009/2010"
+# 
+# coffee[which(coffee$Harvest.Year=="4t/2011"|
+#                coffee$Harvest.Year=="January 2011"|
+#                coffee$Harvest.Year=="3T/2011"|
+#                coffee$Harvest.Year=="1t/2011"|
+#                coffee$Harvest.Year==" 1T/2011"|
+#                coffee$Harvest.Year=="Spring 2011 in Colombia."|
+#                coffee$Harvest.Year=="Abril - Julio /2011"|
+#                coffee$Harvest.Year=="1T/2011"
+#              ),
+#        "Harvest.Year"] <- "2011"
+# 
+# coffee[which(coffee$Harvest.Year=="2010-2011"),
+#        "Harvest.Year"] <- "2010/2011"
+# 
+# coffee[which(coffee$Harvest.Year=="2013/2014"),
+#        "Harvest.Year"] <- "2013/2014"
+# 
+# coffee[which(coffee$Harvest.Year=="2016 / 2017"|
+#                coffee$Harvest.Year=="2016/2017"),
+#        "Harvest.Year"] <- "2016/2017"
+# 
+# coffee[which(coffee$Harvest.Year=="2018"|
+#                coffee$Harvest.Year=="2017 / 2018"),
+#        "Harvest.Year"] <- "2017/2018"
+# 
+# other_years <- which(coffee$Harvest.Year=="Mayo a Julio"|
+#                        coffee$Harvest.Year=="mmm"|
+#                        coffee$Harvest.Year=="TEST"|
+#                        coffee$Harvest.Year=="Abril - Julio"|
+#                        coffee$Harvest.Year=="August to December"|
+#                        coffee$Harvest.Year=="May-August"|
+#                        coffee$Harvest.Year=="January Through April")
+# coffee[other_years,]
+# coffee[other_years,"Harvest.Year"] <- "missing"
+# 
+# coffee$Harvest.Year <- factor(coffee$Harvest.Year)
+# 
+# table(coffee$Harvest.Year)
 
 #Now let's look on the  Processing.Method factor
 table(coffee$Processing.Method)
 #We group NA and Other together
-coffee[which(coffee$Processing.Method==""),"Processing.Method"] <- "Other"
+coffee$Processing.Method <- addNA(coffee$Processing.Method)
+levels(coffee$Processing.Method)
+coffee[which(coffee$Processing.Method=="Other"),"Processing.Method"] <- NA
+coffee$Processing.Method <- droplevels(coffee$Processing.Method)
+coffee$Processing.Method <- as.character(coffee$Processing.Method)
+typeof(coffee$Processing.Method)
+#Now let's deal with missing values
+coffee <- coffee %>% 
+  group_by(Region) %>%
+  mutate(Processing.Method.impute.Gmode = if_else(is.na(Processing.Method),
+                                                  Mode(Processing.Method),
+                                                  Processing.Method)) %>%
+  ungroup()
 
-#Now let's look on the next factor - Color
+coffee$Processing.Method <- as.factor(coffee$Processing.Method)
+coffee$Processing.Method.impute.Gmode <- as.factor(coffee$Processing.Method.impute.Gmode)
+coffee$Processing.Method.impute.Gmode <- addNA(coffee$Processing.Method.impute.Gmode)
+coffee$Processing.Method.impute.Gmode <- droplevels(coffee$Processing.Method.impute.Gmode)
+
+coffee$Processing.Method %>% 
+  table() %>%
+  prop.table()
+
+coffee$Processing.Method.impute.Gmode %>%
+  table() %>%
+  prop.table()
+#Distributions are similar
+
+#There are only NAs in Color and Variety color left
+#Let's look on the next factor - Color
+coffee$Color <- addNA(coffee$Color)
 table(coffee$Color)
-#We should group NA and None together
-coffee[which(coffee$Color==""),"Color"] <- "None"
 
-coffee$Color <- factor(coffee$Color)
+#We should group NA and None together
+coffee[which(coffee$Color=="None"),"Color"] <- NA
+coffee$Color <- droplevels(coffee$Color)
+table(coffee$Color)
+coffee$Color <- as.character(coffee$Color)
+#267 NA values
+coffee <- coffee %>% 
+  group_by(Region,Processing.Method.impute.Gmode) %>%
+  mutate(Color.impute.Gmode = if_else(is.na(Color),
+                                      Mode(Color),
+                                      Color)) %>%
+  ungroup()
+
+coffee$Color.impute.Gmode <- addNA(coffee$Color.impute.Gmode)
+table(coffee$Color.impute.Gmode)
+
+coffee$Color.impute.Gmode <- as.character(coffee$Color.impute.Gmode)
+coffee <- coffee %>%
+  mutate(Color.impute.Gmode = if_else(is.na(Color.impute.Gmode),
+                                      Mode(Color),
+                                      Color.impute.Gmode))
+coffee$Color %>% 
+  table() %>%
+  prop.table()
+
+coffee$Color.impute.Gmode %>%
+  table() %>%
+  prop.table()
+
+coffee$Color.impute.Gmode <- addNA(coffee$Color.impute.Gmode)
+coffee$Color.impute.Gmode <- as.factor(coffee$Color.impute.Gmode)
+coffee$Color.impute.Gmode <- droplevels(coffee$Color.impute.Gmode)
+table(coffee$Color.impute.Gmode)
+
+#Now it's time to look on the last factor - Variety
+coffee$Variety <- as.character(coffee$Variety)
+#108 Other and 201 NA - we group them
+coffee[which(coffee$Variety=="Other"),"Variety"] <- NA
+coffee$Variety <- addNA(coffee$Variety)
+table(coffee$Variety)
+
+#Now we group small groups into bigger groups based on information
+#from https://varieties.worldcoffeeresearch.org/
+coffee$Variety <- as.character(coffee$Variety)
+
+coffee[which(coffee$Variety=="Java"),"Variety"]                  <- "Ethiopian Landrace"
+coffee[which(coffee$Variety=="Gesha"),"Variety"]                 <- "Ethiopian Landrace"
+coffee[which(coffee$Variety=="Ethiopian Heirlooms"),"Variety"]   <- "Ethiopian Landrace"
+coffee[which(coffee$Variety=="Ethiopian Yirgacheffe"),"Variety"] <- "Ethiopian Landrace"
+coffee[which(coffee$Variety=="Ruiru 11"),"Variety"]              <- "Introgressed"
+coffee[which(coffee$Variety=="Catimor"),"Variety"]               <- "Introgressed"
+coffee[which(coffee$Variety=="Arusha"),"Variety"]                <- "Typica"
+coffee[which(coffee$Variety=="Blue Mountain"),"Variety"]         <- "Typica"
+coffee[which(coffee$Variety=="Mandheling"),"Variety"]            <- "Typica"
+coffee[which(coffee$Variety=="Marigojipe"),"Variety"]            <- "Typica"
+coffee[which(coffee$Variety=="Pache Comun"),"Variety"]           <- "Typica"
+coffee[which(coffee$Variety=="Peaberry"),"Variety"]              <- "Typica"
+coffee[which(coffee$Variety=="SL14"),"Variety"]                  <- "Typica"
+coffee[which(coffee$Variety=="SL34"),"Variety"]                  <- "Typica"
+coffee[which(coffee$Variety=="Sulawesi"),"Variety"]              <- "Typica"
+coffee[which(coffee$Variety=="Catuai"),"Variety"]                <- "Bourbon-Typica cross"
+coffee[which(coffee$Variety=="Mundo Novo"),"Variety"]            <- "Bourbon-Typica cross"
+coffee[which(coffee$Variety=="Pacamara"),"Variety"]              <- "Bourbon-Typica cross"
+coffee[which(coffee$Variety=="SL28"),"Variety"]                  <- "Bourbon-Typica cross"
+coffee[which(coffee$Variety=="Sumatra"),"Variety"]               <- "Bourbon-Typica cross"
+coffee[which(coffee$Variety=="Sumatra Lintong"),"Variety"]       <- "Bourbon-Typica cross"
+coffee[which(coffee$Variety=="Moka Peaberry"),"Variety"]         <- "Bourbon"
+coffee[which(coffee$Variety=="Pacas"),"Variety"]                 <- "Bourbon"
+
+coffee <- coffee %>% 
+  group_by(Region,Processing.Method.impute.Gmode) %>%
+  mutate(Variety.impute.Gmode = if_else(is.na(Variety),
+                                      Mode(Variety),
+                                      Variety)) %>%
+  ungroup()
+
+coffee$Variety %>% 
+  table() %>%
+  prop.table()
+
+coffee$Variety.impute.Gmode %>%
+  table() %>%
+  prop.table()
+
+coffee$Variety <- as.factor(coffee$Variety)
+coffee$Variety <- droplevels(coffee$Variety)
+coffee$Variety <- addNA(coffee$Variety)
+table(coffee$Variety)
+
+coffee$Variety.impute.Gmode <- addNA(coffee$Variety.impute.Gmode)
+coffee$Variety.impute.Gmode <- as.factor(coffee$Variety.impute.Gmode)
+coffee$Variety.impute.Gmode <- droplevels(coffee$Variety.impute.Gmode)
+table(coffee$Variety.impute.Gmode)
+
+coffee$Variety.impute.Gmode <- as.character(coffee$Variety.impute.Gmode)
+coffee <- coffee %>% 
+  group_by(Bag.Weight,Color.impute.Gmode) %>%
+  mutate(Variety.impute.Gmode = if_else(is.na(Variety.impute.Gmode),
+                                        Mode(Variety.impute.Gmode),
+                                        Variety.impute.Gmode)) %>%
+  ungroup()
+
+coffee$Variety.impute.Gmode <- addNA(coffee$Variety.impute.Gmode)
+coffee$Variety.impute.Gmode <- as.factor(coffee$Variety.impute.Gmode)
+coffee$Variety.impute.Gmode <- droplevels(coffee$Variety.impute.Gmode)
+table(coffee$Variety.impute.Gmode)
+#Distribution has changed, but Typica and Bourbon varieties are most popular 
+#in the World, so it is very likely to be truth
 
 #Now let's look for outliers considering Total.Cup.Point result
 ggplot(coffee,
@@ -418,20 +537,24 @@ ggplot(coffee,
   geom_histogram(fill = "blue",
                  bins = 100) +
   theme_bw()
-# There is one outlier in our dependent variable - We can delete (Total.Cup.Points==0) or replace it with the mean
-coffee <- coffee[!(coffee$Total.Cup.Points==0),]
+# There is one outlier in our dependent variable - We can replace (Total.Cup.Points==0) it with the median
+coffee[which(coffee$Total.Cup.Points==0),"Total.Cup.Points"] <- median(coffee$Total.Cup.Points)
+
+coffee_final <- coffee
+coffee_final[,c("Country.of.Origin","Processing.Method","altitude_low_meters","altitude_high_meters",
+             "altitude_mean_meters","Color")] <- NULL
 
 # Now let's divide the set into learning and testing sample
 set.seed(987654321)
 
-coffees_which_train <- createDataPartition(coffee$Total.Cup.Points,
+coffees_which_train <- createDataPartition(coffee_final$Total.Cup.Points,
                                           p = 0.7, 
                                           list = FALSE) 
 head(coffees_which_train)
 
 # we need to apply this index for data division
-coffees_train <- coffee[coffees_which_train,]
-coffees_test <- coffee[-coffees_which_train,]
+coffees_train <- coffee_final[coffees_which_train,]
+coffees_test <- coffee_final[-coffees_which_train,]
 
 # let's check the distribution of
 # the target variable in both samples
@@ -441,7 +564,7 @@ summary(coffees_test$Total.Cup.Points)
 # storing the list of names of numeric variables into a vector
 coffees_numeric_vars <- 
   # check if variable is numeric
-  sapply(coffee, is.numeric) %>% 
+  sapply(coffee_final, is.numeric) %>% 
   # select those which are
   which() %>% 
   # and keep just their names
@@ -535,7 +658,7 @@ findCorrelation(coffee_correlations,
 
 ### qualitative (categorical) variables ###
 coffees_categorical_vars <-
-  sapply(coffee, is.factor) %>% 
+  sapply(coffee_final, is.factor) %>% 
   which() %>% 
   names()
 
@@ -666,7 +789,7 @@ ggplot(coffees_train,
 # 
 # 
 # coffees_correlations <- 
-#   cor(coffee[,coffees_numeric_vars],
+#   cor(coffee_final[,coffees_numeric_vars],
 #       use = "pairwise.complete.obs")
 # 
 # coffees_correlations
@@ -675,14 +798,14 @@ ggplot(coffees_train,
 #          method = "pie")
 # 
 # coffee_lm1 <- lm(Total.Cup.Points ~ Aroma,
-#                  data = coffee)
+#                  data = coffee_final)
 # 
 # summary(coffee_lm1)
 # 
 # 
 # coffee_lm2 <- lm(Total.Cup.Points ~ Aroma + Flavor + Acidity +
 #                    Body + Balance + Sweetness + Category.One.Defects +Category.Two.Defects,
-#                  data = coffee)
+#                  data = coffee_final)
 # 
 # summary(coffee_lm2)
 # 
@@ -709,7 +832,7 @@ ggplot(coffees_train,
 # 
 # #All data
 # houses_lm3 <- lm(Total.Cup.Points ~ .,
-#                  data = coffee %>% 
+#                  data = coffee_final %>% 
 #                    dplyr::select(houses_variables_all)) # training data
 # 
 # 
