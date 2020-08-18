@@ -541,8 +541,9 @@ ggplot(coffee,
 coffee[which(coffee$Total.Cup.Points==0),"Total.Cup.Points"] <- median(coffee$Total.Cup.Points)
 
 coffee_final <- coffee
-coffee_final[,c("Country.of.Origin","Processing.Method","altitude_low_meters","altitude_high_meters",
-             "altitude_mean_meters","Color")] <- NULL
+coffee_final[,c("Country.of.Origin","Processing.Method","Variety","altitude_low_meters","altitude_high_meters",
+             "altitude_mean_meters","Color","altitude_mean_meters.impute_mean","altitude_low_meters.impute_mean",
+             "altitude_high_meters.impute_mean")] <- NULL
 
 # Now let's divide the set into learning and testing sample
 set.seed(987654321)
@@ -592,17 +593,16 @@ corrplot.mixed(coffee_correlations[coffees_numeric_vars_order,
                tl.col="black",
                tl.pos = "lt")
 
-#altitude stats, number of bags and quakers seem to have very small correlation between 
+#number of bags and quakers seem to have very small correlation between 
 #them and the other variables - we will skip them
-corrplot.mixed(coffee_correlations[coffees_numeric_vars_order[-12:-16], 
-                                   coffees_numeric_vars_order[-12:-16]],
+corrplot.mixed(coffee_correlations[coffees_numeric_vars_order[-15:-16], 
+                                   coffees_numeric_vars_order[-15:-16]],
                upper = "circle",
                lower = "number",
                tl.col = "black",
                tl.pos = "lt")
 
-#The relation of the target variable with the most strongly correlated variables
-
+### The relation of the target variable with the most strongly correlated variables
 #Flavour
 ggplot(coffees_train,
        aes(x = Total.Cup.Points,
@@ -610,18 +610,14 @@ ggplot(coffees_train,
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-# 3 coffees not 
-# matching the relationship - two have flavour above 6.5 but Total.Cup.Points below 65 
-#and one has Flavor close to 6 and the Total.Cup.Points close to 78 - maybe exclude
-#these observations from the sample
-coffees_which_outliers <- NULL
-
-coffees_outliers_lower <- which(coffees_train$Flavor > 6.5 & coffees_train$Flavor < 7 & coffees_train$Total.Cup.Points < 65)
-coffees_outliers_higher <- which(coffees_train$Flavor < 6.25 & coffees_train$Total.Cup.Points > 77.5)
-
-coffees_which_outliers <- append(coffees_which_outliers,coffees_outliers_lower)
-coffees_which_outliers <- append(coffees_which_outliers,coffees_outliers_higher)
-coffees_which_outliers
+# 1 coffee clearly not matching the relationship - the flavour == 0 but Total.Cup.Points above 80 
+# maybe exclude these observations from the sample
+coffees_outliers <- NULL
+coffees_outliers_flavor <- which(coffees_train$Flavor == 0 & coffees_train$Total.Cup.Points > 80)
+coffees_train[coffees_outliers_flavor,]
+#Aroma, Flavor, Aftertaste, Acidity, Body, Balance, Uniformity, Clean.Cup, Sweetness, Cupper.Points equal to 0
+#It is clear outlier - we delete it
+coffees_train <- coffees_train[-coffees_outliers_flavor,]
 
 #Aftertaste
 ggplot(coffees_train,
@@ -631,12 +627,10 @@ ggplot(coffees_train,
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
 
-# 3 coffees not 
-# matching the relationship - the new one has Aftertaste result above 7.5 and total.Cup.Points below 75 
-coffees_outliers_lower_aftertaste <- which(coffees_train$Aftertaste > 7.5 & coffees_train$Aftertaste < 8 & coffees_train$Total.Cup.Points < 75)
-which(coffees_train$Aftertaste < 7 & coffees_train$Total.Cup.Points < 65) #these are already marked as outliers in the analysis
-                                                                          #of relationship between Flavour and Total.Cup.Points
-coffees_which_outliers <- append(coffees_which_outliers,coffees_outliers_lower_aftertaste)
+# 1 coffee clearly notmatching the relationship - 
+#the Aftertaste result above 6.5 and total.Cup.Points below 60 
+coffees_outliers_aftertaste <- which(coffees_train$Aftertaste > 6.5 & coffees_train$Total.Cup.Points < 60)
+coffees_outliers <- append(coffees_outliers,coffees_outliers_aftertaste)
 
 #Balance
 ggplot(coffees_train,
@@ -645,14 +639,122 @@ ggplot(coffees_train,
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-
-#It is more difficult to see outliers here. One point seems to be not matching the relationship for sure - 
+#1 clear outlier - 
 #Total.Cup.Points < 60 and Balance > 6.5 - It was marked as outlier earlier
 
-findCorrelation(coffee_correlations,
-                cutoff = 0.75,
-                names = TRUE)
+#Aroma
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Aroma)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+#1 clear new outlier - total.Cup.Points above 80 and Aroma near 5
+coffees_outliers_aroma <- which(coffees_train$Aroma < 5.5 & coffees_train$Total.Cup.Points > 80)
+coffees_outliers <- append(coffees_outliers,coffees_outliers_aroma)
+coffees_train[coffees_outliers_aroma,] #Other data looks fine, so we will keep it for now
 
+#Acidity
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Acidity)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+#1 clear outlier, but marked earlier
+
+#Body
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Body)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+#1 clear outlier - Body below 5.5 and Total.Cup.Points above 80
+coffees_outliers_body <- which(coffees_train$Body < 5.5 & coffees_train$Total.Cup.Points > 80)
+coffees_outliers <- append(coffees_outliers,coffees_outliers_body)
+coffees_train[coffees_outliers_body,] #Other data looks fine, so we will keep it for now
+
+#Uniformity
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Uniformity)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+#Relationship looks more like categorical relationship
+
+#Clean.Cup
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Clean.Cup)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+#Relationship looks more like categorical relationship
+
+#Sweetness
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Sweetness)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+
+#Cupper.Points
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Cupper.Points)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+#6 new outliers
+#Cupper.Points below 5.5 and Total.Cup.Points above 80
+#Cupper.Points = 10 and Total.Cup.Points above 82
+coffees_outliers_cupper_low <- which(coffees_train$Cupper.Points < 5.5 & coffees_train$Total.Cup.Points > 80)
+coffees_outliers_cupper_high <- which(coffees_train$Cupper.Points == 10 & coffees_train$Total.Cup.Points > 82)
+coffees_outliers <- append(coffees_outliers,coffees_outliers_cupper_low)
+coffees_outliers <- append(coffees_outliers,coffees_outliers_cupper_high)
+
+coffees_train[coffees_outliers_cupper_low,]
+coffees_train[coffees_outliers_cupper_high,] #Other data looks fine, so we will keep it for now
+
+#Moisture
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Moisture)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+
+#Category.One.Defects
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Category.One.Defects)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+
+#Quakers
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = Quakers)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+
+#altitude_mean_meters.impute_median
+ggplot(coffees_train,
+       aes(x = Total.Cup.Points,
+           y = altitude_mean_meters.impute_median)) +
+  geom_point(col = "blue") +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_bw()
+
+#Now we try to find highly correlated variables
+findCorrelation(coffee_correlations,
+                cutoff = 0.80,
+                names = TRUE)
 # these are potential candidates to be excluded from the model because of the high correlation between them
 
 
