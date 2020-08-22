@@ -14,6 +14,8 @@ library(olsrr)
 library(mice)
 library(VIM)
 source("Mode.R")
+library(verification)
+library(nnet)
 #getwd()
 #setwd("C:/Users/Admin/Documents/GIT/ProjectsML1")
 coffee_full <- read.csv("arabica_data_cleaned.csv",na.strings=c("","NA"))
@@ -160,14 +162,14 @@ colSums(is.na(coffee)) %>%
 #Let's look on the Country.of.Origin
 table(coffee$Country.of.Origin)
 
-#There is one coffee without name of the Country of origin. Let's delete it
-
+#There is one coffee without name of the Country of origin. We use mode in subgroups to input the name
 coffee <- coffee %>% 
   group_by(Processing.Method, Color) %>%
   mutate(Country.of.Origin.impute.Gmode = if_else(is.na(Country.of.Origin), 
                                         Mode(Country.of.Origin),
                                         Country.of.Origin)) %>% 
   ungroup()
+
 #Colombia assigned to NA
 #Only one observation was changed, so the distribution of Country.of.Origin.impute.Gmode
 #is very close to the the distribution of Country.of.Origin
@@ -238,6 +240,7 @@ coffee[which(coffee$Country.of.Origin.impute.Gmode=="Mexico"|
        "Region"] <- "North America"
 
 coffee$Region <- as.factor(coffee$Region)
+coffee$Country.of.Origin.impute.Gmode <- as.factor(coffee$Country.of.Origin.impute.Gmode)
 
 #Now let's look on the Bag.Weight factor
 table(coffee$Bag.Weight)
@@ -422,8 +425,11 @@ coffee$Processing.Method.impute.Gmode %>%
 coffee$Color <- addNA(coffee$Color)
 table(coffee$Color)
 
-#We should group NA and None together
+#I should group NA and None together
+# Blue-Green and Bluish-Green are the same colors, 
+# thus I group them
 coffee[which(coffee$Color=="None"),"Color"] <- NA
+coffee[which(coffee$Color=="Blue-Green"),"Color"] <- "Bluish-Green"
 coffee$Color <- droplevels(coffee$Color)
 table(coffee$Color)
 coffee$Color <- as.character(coffee$Color)
@@ -531,24 +537,75 @@ table(coffee$Variety.impute.Gmode)
 #Distribution has changed, but Typica and Bourbon varieties are most popular 
 #in the World, so it is very likely to be truth
 
-#Now let's look for outliers considering Total.Cup.Point result
+#Now let's look for outliers considering Total.Cup.Points result
 ggplot(coffee,
        aes(x = Total.Cup.Points)) +
   geom_histogram(fill = "blue",
                  bins = 100) +
   theme_bw()
-# There is one outlier in our dependent variable - We can replace (Total.Cup.Points==0) it with the median
-coffee[which(coffee$Total.Cup.Points==0),"Total.Cup.Points"] <- median(coffee$Total.Cup.Points)
 
+# There is one outlier in Total.Cup.Points
+coffee[which(coffee$Total.Cup.Points==0),]
+#The other numeric variables are equal to 0, so I delete this observation
+coffee <- coffee[-which(coffee$Total.Cup.Points==0),]
+
+#I create new dataframe without variables which I will not use in the analysis
+#I also delete Total.Cup.Points, because it is the sum of Aroma, Flavor, Aftertaste, Acidity, Body, Balance,
+#Uniformity, Clean.Cup, Sweetness and Cupper.Points
 coffee_final <- coffee
 coffee_final[,c("Country.of.Origin","Processing.Method","Variety","altitude_low_meters","altitude_high_meters",
              "altitude_mean_meters","Color","altitude_mean_meters.impute_mean","altitude_low_meters.impute_mean",
-             "altitude_high_meters.impute_mean")] <- NULL
+             "altitude_high_meters.impute_mean","Total.Cup.Points")] <- NULL
+
+# Before split the dataset, I check if there are variables
+# with zero or near zero variance, because such variables 
+# may need some tranformations 
+nearZeroVar(coffee_final,
+            saveMetrics = TRUE) -> coffees_nzv_stats
+
+coffees_nzv_stats %>% 
+  rownames_to_column("variable") %>% 
+  arrange(-zeroVar, -nzv, -freqRatio)
+
+# we havee 3 problematic variables
+table(coffee_final$Quakers)
+table(coffee_final$Clean.Cup)
+table(coffee_final$Sweetness)
+
+# I will group them in two groups, because in each column there is
+# one hugly dominant value
+quakers_not_zero_train <- which(coffee_final$Quakers>0)
+coffee_final$Quakers <- as.character(coffee_final$Quakers)
+coffee_final[quakers_not_zero_train,"Quakers"] <- ">0"
+coffee_final$Quakers <- as.factor(coffee_final$Quakers)
+table(coffee_final$Quakers)
+
+clean_cup_not_10_train <- which(coffee_final$Clean.Cup<10)
+coffee_final$Clean.Cup <- as.character(coffee_final$Clean.Cup)
+coffee_final[clean_cup_not_10_train,"Clean.Cup"] <- "<10"
+coffee_final$Clean.Cup <- as.factor(coffee_final$Clean.Cup)
+table(coffee_final$Clean.Cup)
+
+sweetness_not_10_train <- which(coffee_final$Sweetness<10)
+coffee_final$Sweetness <- as.character(coffee_final$Sweetness)
+coffee_final[sweetness_not_10_train,"Sweetness"] <- "<10"
+coffee_final$Sweetness <- as.factor(coffee_final$Sweetness)
+table(coffee_final$Sweetness)
+
+#Let's check if they have still near zero variance
+nearZeroVar(coffee_final,
+            saveMetrics = TRUE) -> coffees_nzv_stats
+
+coffees_nzv_stats %>% 
+  rownames_to_column("variable") %>% 
+  arrange(-zeroVar, -nzv, -freqRatio)
+#There are no near zero variance variables now
 
 # Now let's divide the set into learning and testing sample
+coffees_numeric_vars
 set.seed(987654321)
 
-coffees_which_train <- createDataPartition(coffee_final$Total.Cup.Points,
+coffees_which_train <- createDataPartition(coffee_final$Cupper.Points,
                                           p = 0.7, 
                                           list = FALSE) 
 head(coffees_which_train)
@@ -559,16 +616,14 @@ coffees_test <- coffee_final[-coffees_which_train,]
 
 # let's check the distribution of
 # the target variable in both samples
-summary(coffees_train$Total.Cup.Points)
-summary(coffees_test$Total.Cup.Points)
+summary(coffees_train$Cupper.Points)
+summary(coffees_test$Cupper.Points)
+#similar distribution in both samples
 
 # storing the list of names of numeric variables into a vector
 coffees_numeric_vars <- 
-  # check if variable is numeric
-  sapply(coffee_final, is.numeric) %>% 
-  # select those which are
+  sapply(coffees_train, is.numeric) %>% 
   which() %>% 
-  # and keep just their names
   names()
 
 coffees_numeric_vars
@@ -582,174 +637,154 @@ corrplot(coffee_correlations,
          method = "pie")
 
 coffees_numeric_vars_order <- 
-  coffee_correlations[,"Total.Cup.Points"] %>% 
+  coffee_correlations[,"Cupper.Points"] %>% 
   sort(decreasing = TRUE) %>%
   names()
 
 corrplot.mixed(coffee_correlations[coffees_numeric_vars_order, 
                                    coffees_numeric_vars_order],
-               upper = "square",
+               upper = "circle",
                lower = "number",
                tl.col="black",
                tl.pos = "lt")
-
-#number of bags and quakers seem to have very small correlation between 
-#them and the other variables - we will skip them
-corrplot.mixed(coffee_correlations[coffees_numeric_vars_order[-15:-16], 
-                                   coffees_numeric_vars_order[-15:-16]],
+# We can see very high correlation between altitude variables 
+# Number of bags and Category.One.Defects seem to have very small correlation between 
+# them and the other variables - we will skip them
+corrplot.mixed(coffee_correlations[coffees_numeric_vars_order[-12:-13], 
+                                   coffees_numeric_vars_order[-12:-13]],
                upper = "circle",
                lower = "number",
                tl.col = "black",
                tl.pos = "lt")
 
+
 ### The relation of the target variable with the most strongly correlated variables
 #Flavour
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Flavor)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-# 1 coffee clearly not matching the relationship - the flavour == 0 but Total.Cup.Points above 80 
+# 5 coffees clearly not matching the relationship - 2 coffees with the flavour < 8 but Cupper.Points = 10 
+# 3 coffees with Cupper.Points < 5.5 and Flavor > 7.5
 # maybe exclude these observations from the sample
 coffees_outliers <- NULL
-coffees_outliers_flavor <- which(coffees_train$Flavor == 0 & coffees_train$Total.Cup.Points > 80)
-coffees_train[coffees_outliers_flavor,]
-#Aroma, Flavor, Aftertaste, Acidity, Body, Balance, Uniformity, Clean.Cup, Sweetness, Cupper.Points equal to 0
-#It is clear outlier - we delete it
-coffees_train <- coffees_train[-coffees_outliers_flavor,]
+coffees_outliers_flavor <- which(coffees_train$Flavor < 8 & coffees_train$Cupper.Points == 10)
+coffees_outliers_flavor <- append(coffees_outliers_flavor,
+                                  which(coffees_train$Flavor > 7.5 & coffees_train$Cupper.Points < 5.5))
+
+coffees_outliers <- append(coffees_outliers,coffees_outliers_flavor)
 
 #Aftertaste
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Aftertaste)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
 
-# 1 coffee clearly notmatching the relationship - 
-#the Aftertaste result above 6.5 and total.Cup.Points below 60 
-coffees_outliers_aftertaste <- which(coffees_train$Aftertaste > 6.5 & coffees_train$Total.Cup.Points < 60)
-coffees_outliers <- append(coffees_outliers,coffees_outliers_aftertaste)
+# 5 coffees clearly notmatching the relationship - 
+#they look similar to the previous values from Flavor 
+coffees_outliers_aftertaste <- which(coffees_train$Aftertaste >= 7.5 & coffees_train$Cupper.Points < 5.5)
+coffees_outliers_aftertaste <- append(coffees_outliers_aftertaste,
+                                      which(coffees_train$Aftertaste < 8 & coffees_train$Cupper.Points == 10))
+identical(sort(coffees_outliers_flavor),sort(coffees_outliers_aftertaste))
+# They were exactly the same outliers 
 
 #Balance
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Balance)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-#1 clear outlier - 
-#Total.Cup.Points < 60 and Balance > 6.5 - It was marked as outlier earlier
+#4 clear outliers - Cupper.Points = 10 and Balance = 7 ; Balance > 7.5 and Cupper.Points < 5.5
+coffees_outliers_balance <- which(coffees_train$Balance == 7 & coffees_train$Cupper.Points == 10)
+# Actually there are 2 outliers with exact value of Balance and Cupper.Points
+coffees_outliers_balance <- append(coffees_outliers_balance,
+                                   which(coffees_train$Balance > 7.5 & coffees_train$Cupper.Points < 5.5))
+identical(sort(coffees_outliers_flavor),sort(coffees_outliers_balance))
+# They were exactly the same outliers
 
 #Aroma
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Aroma)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-#1 clear new outlier - total.Cup.Points above 80 and Aroma near 5
-coffees_outliers_aroma <- which(coffees_train$Aroma < 5.5 & coffees_train$Total.Cup.Points > 80)
-coffees_outliers <- append(coffees_outliers,coffees_outliers_aroma)
-coffees_train[coffees_outliers_aroma,] #Other data looks fine, so we will keep it for now
+#4 clear new outliers - Cupper.Points = 10 and Aroma < 7.75 ; Cupper.Points < 5.5 and Aroma > 7.5
+coffees_outliers_aroma <- which(coffees_train$Aroma < 7.75 & coffees_train$Cupper.Points == 10)
+coffees_outliers_aroma <- append(coffees_outliers_aroma,
+                                   which(coffees_train$Aroma > 7.5 & coffees_train$Cupper.Points < 5.5))
+#These outliers were marked earlier
 
 #Acidity
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Acidity)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-#1 clear outlier, but marked earlier
+# At least 2 clear outliers
+which(coffees_train$Acidity < 7.5 & coffees_train$Cupper.Points == 10)
+# 2 outliers marked earlier
+coffees_outliers_acidity <- which(coffees_train$Acidity < 5.5 & coffees_train$Cupper.Points > 7.5)
+# 1 new outlier
+coffees_outliers <- append(coffees_outliers,coffees_outliers_acidity)
 
 #Body
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Body)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-#1 clear outlier - Body below 5.5 and Total.Cup.Points above 80
-coffees_outliers_body <- which(coffees_train$Body < 5.5 & coffees_train$Total.Cup.Points > 80)
+#At least 2 clear outliers
+which(coffees_train$Body == 7 & coffees_train$Cupper.Points == 10)
+# 2 outliers marked earlier
+coffees_outliers_body <- which(coffees_train$Body < 5.5 & coffees_train$Cupper.Points > 7.5)
+# 1 new outlier
 coffees_outliers <- append(coffees_outliers,coffees_outliers_body)
-coffees_train[coffees_outliers_body,] #Other data looks fine, so we will keep it for now
 
 #Uniformity
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Uniformity)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
 #Relationship looks more like categorical relationship
 
-#Clean.Cup
-ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
-           y = Clean.Cup)) +
-  geom_point(col = "blue") +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_bw()
-#Relationship looks more like categorical relationship
-
-#Sweetness
-ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
-           y = Sweetness)) +
-  geom_point(col = "blue") +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_bw()
-
-#Cupper.Points
-ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
-           y = Cupper.Points)) +
-  geom_point(col = "blue") +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_bw()
-#6 new outliers
-#Cupper.Points below 5.5 and Total.Cup.Points above 80
-#Cupper.Points = 10 and Total.Cup.Points above 82
-coffees_outliers_cupper_low <- which(coffees_train$Cupper.Points < 5.5 & coffees_train$Total.Cup.Points > 80)
-coffees_outliers_cupper_high <- which(coffees_train$Cupper.Points == 10 & coffees_train$Total.Cup.Points > 82)
-coffees_outliers <- append(coffees_outliers,coffees_outliers_cupper_low)
-coffees_outliers <- append(coffees_outliers,coffees_outliers_cupper_high)
-
-coffees_train[coffees_outliers_cupper_low,]
-coffees_train[coffees_outliers_cupper_high,] #Other data looks fine, so we will keep it for now
-
 #Moisture
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Moisture)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
+#many values far from relationship
 
 #Category.One.Defects
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = Category.One.Defects)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-
-#Quakers
-ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
-           y = Quakers)) +
-  geom_point(col = "blue") +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_bw()
+#3 clear outliers - Defects >= 15 and Cupper.Points above 6.5
+coffees_outliers_cat1_defects <- which(coffees_train$Category.One.Defects >= 15 & coffees_train$Cupper.Points > 6.5)
+coffees_outliers <- append(coffees_outliers,coffees_outliers_cat1_defects)
 
 #altitude_mean_meters.impute_median
 ggplot(coffees_train,
-       aes(x = Total.Cup.Points,
+       aes(x = Cupper.Points,
            y = altitude_mean_meters.impute_median)) +
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
+#There is some positive relationship, but very unclear - many values far from relationship
 
 #Now we try to find highly correlated variables
 findCorrelation(coffee_correlations,
@@ -757,185 +792,220 @@ findCorrelation(coffee_correlations,
                 names = TRUE)
 # these are potential candidates to be excluded from the model because of the high correlation between them
 
-
 ### qualitative (categorical) variables ###
 coffees_categorical_vars <-
-  sapply(coffee_final, is.factor) %>% 
+  sapply(coffees_train, is.factor) %>% 
   which() %>% 
   names()
 
 coffees_categorical_vars
 
-# The function that retrieves F statistic value
+#We use the function that retrieves F statistic value
 # for the explanatory categorical variable provided 
 # as the function argument
 
 coffees_F_anova <- function(categorical_var) {
-  anova_ <- aov(coffees_train$Total.Cup.Points ~ 
+  anova_ <- aov(coffees_train$Cupper.Points ~ 
                   coffees_train[[categorical_var]]) 
   
   return(summary(anova_)[[1]][1, 4])
 }
 
-# Relationship between coffees_categorical_vars and Total.Cup.Points
+# Relationship between coffees_categorical_vars and Cupper.Points
 sapply(coffees_categorical_vars,
        coffees_F_anova) %>% 
   sort(decreasing = TRUE) -> coffees_anova_all_categorical
 
 coffees_anova_all_categorical
 
-#relation between Color levels and Total.Cup.Points
+#relation between Color.impute.Gmode levels and Cupper.Points
 ggplot(coffees_train,
-       aes(x = Certification.Body,
-           y = Total.Cup.Points)) +
+       aes(x = Color.impute.Gmode,
+           y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
-#there is no clear relationship between these variables
-#Also there are many NAs
+#Green has many outliers
+#Bluish-Green has slightly higher values 
 
-#relation between Country.of.Origin levels and Total.Cup.Points
+#relation between Country.of.Origin.impute.Gmode levels and Cupper.Points
 ggplot(coffees_train,
-       aes(x = Country.of.Origin,
-           y = Total.Cup.Points)) +
+       aes(x = Country.of.Origin.impute.Gmode,
+           y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
 #there can be seen some relationships between these variables but there are countries with only few coffees
 #Thus, we probably choose the region 
 ggplot(coffees_train,
        aes(x = Region,
-           y = Total.Cup.Points)) +
+           y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
 #It can be seen that there are differences between Regions
 
-#the relationship between Total.Cup.Points and Harvest.Year
+#the relationship between Cupper.Points and Variety.impute.Gmode
 ggplot(coffees_train,
-       aes(x = Harvest.Year,
-           y = Total.Cup.Points)) +
+       aes(x = Variety.impute.Gmode,
+           y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
-#There is no big differences between years and it will not be helpful for predicting
-#Total.Cup.Points in the future, so we will ommit it in the analysis
+#There are some differences between varieties of coffee, but not very clear
 
+#the relationship between Cupper.Points and Processing.Method.impute.Gmode
+ggplot(coffees_train,
+       aes(x = Processing.Method.impute.Gmode,
+           y = Cupper.Points)) +
+  geom_boxplot(fill = "red") +
+  theme_bw()
+#There is no clear differences betweend processing methods
+#There are many values far from mean and median in Washed / Wet
+
+#the relationship between Cupper.Points and Clean.Cup
+ggplot(coffees_train,
+       aes(x = Clean.Cup,
+           y = Cupper.Points)) +
+  geom_boxplot(fill = "red") +
+  theme_bw()
+#Clean.Cup = 10 has higher values than <10, but also many outliers there
+
+#the relationship between Cupper.Points and Sweetness
+ggplot(coffees_train,
+       aes(x = Sweetness,
+           y = Cupper.Points)) +
+  geom_boxplot(fill = "red") +
+  theme_bw()
+#Sweetness = 10 has slightly higher values than <10, but also many outliers there
+
+#the relationship between Cupper.Points and Quakers
+ggplot(coffees_train,
+       aes(x = Quakers,
+           y = Cupper.Points)) +
+  geom_boxplot(fill = "red") +
+  theme_bw()
+#Very Similar mean and similar distributions, but many outliers for Quakers = 0
+
+#the relationship between Cupper.Points and unit_of_measurement
 ggplot(coffees_train,
        aes(x = unit_of_measurement,
-           y = Total.Cup.Points)) +
+           y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
 
+#the relationship between Cupper.Points and Bag.Weight
 ggplot(coffees_train,
        aes(x = Bag.Weight,
-           y = Total.Cup.Points)) +
+           y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
+#There are diffrences between Bag.Weights, but not so big
 
-#There are no clear relationships between variables. Bag.Weight and unit_of_measurement
+# Bag.Weight and unit_of_measurement
 #can be also higly correlated with Processing_method and Region
+
 #Let's check it with the Cramer's V coefficient
 DescTools::CramerV(coffees_train$unit_of_measurement,
                    coffees_train$Region)
 #moderate association between unit_of_measurement and Region
-
 DescTools::CramerV(coffees_train$unit_of_measurement,
-                   coffees_train$Processing.Method)
-# NaN
+                   coffees_train$Processing.Method.impute.Gmode)
+#low association between unit_of_measurement and Processing.Method.impute.Gmode
 
 DescTools::CramerV(coffees_train$Bag.Weight,
                    coffees_train$Region)
-#high association between Bag.Weight and Region
+#moderate association between Bag.Weight and Region
 
 DescTools::CramerV(coffees_train$Bag.Weight,
-                   coffees_train$Processing.Method)
-#Nan
+                   coffees_train$Processing.Method.impute.Gmode)
+#low association between Bag.Weight and Processing.Method.impute.Gmode
 
 DescTools::CramerV(coffees_train$Bag.Weight,
                    coffees_train$unit_of_measurement)
 #low association between Bag.Weight and unit_of_measurement
 
-#We will not use unit_of_measurement and Bag.Weight, because of the correlation between them and the Region factor
+#There is moderate association between Bag.Weight and Region and also
+#between unit_of_measurement and Region
+#I do not exclude them from the analysis for now
 
-ggplot(coffees_train,
-       aes(x = Processing.Method,
-           y = Total.Cup.Points)) +
-  geom_boxplot(fill = "red") +
+#I check if there is some linear combination of other variables
+( findLinearCombos(coffees_train[, coffees_numeric_vars] ) ->
+    coffees_linearCombos )
+#there is no such combination
+
+#all coffees_train variables
+coffees_variables_all <- names(coffees_train)
+
+#altitudes are very highly correlated to each other, so I chose only altitude_mean_meters.impute_median
+coffees_variables_all <-
+  coffees_variables_all[!coffees_variables_all %in% 
+                          c("altitude_low_meters.impute_median",
+                            "altitude_high_meters.impute_median",
+                            "Category.One.Defects",
+                            "Number.of.Bags")]
+
+#I delete outliers form training set
+coffees_train <- coffees_train[-coffees_outliers,]
+
+options(contrasts = c("contr.treatment",
+                      "contr.treatment"))
+
+#estimation of the model with all variables
+coffees_lm1 <- lm(Cupper.Points ~ ., 
+                 data = coffees_train %>% 
+                   dplyr::select(coffees_variables_all))
+
+
+summary(coffees_lm1)
+#R-squared 0.8079
+#There are some missing coefficients
+coef(coffees_lm1)[is.na(coef(coffees_lm1))]
+
+#Unfortunately all of Region dummies seems to be multicollinear.
+#Thus, I delete this variable from the analysis
+coffees_variables_all2 <-
+  coffees_variables_all[-which(coffees_variables_all %in% 
+                                c("Region"))]
+
+coffees_lm1a <- lm(Cupper.Points ~ .,
+                  data = coffees_train %>% 
+                    dplyr::select(coffees_variables_all2))
+
+summary(coffees_lm1a)
+#after delete the Region variable R-squared has not changed
+
+# backward eliminationbased on p-value = 0.1
+ols_step_backward_p(coffees_lm1a,
+                    prem = 0.1,
+                    progress = TRUE) -> coffees_lm1_backward_p
+
+# final model details
+summary(coffees_lm1_backward_p$model)
+
+coffees_predicted <- predict(coffees_lm)
+
+ggplot(data.frame(error = coffees_train$Cupper.Points - coffees_predicted),
+       aes(x = error)) +
+  geom_histogram(fill = "blue",
+                 bins = 100) +
   theme_bw()
-#There are many Other values
+
+
+ggplot(data.frame(real = coffees_train$Cupper.Points,
+                  predicted = coffees_predicted),
+       aes(x = predicted, 
+           y = real)) +
+  geom_point(col = "blue") +
+  theme_bw()
+
+cor(coffees_train$Cupper.Points,
+    coffees_predicted)
+
+
+### Evaluation
+#Residuals
+head(coffees_lm$residuals)
+
+hist(coffees_lm$residuals, breaks = 30)
 
 
 
 
 
-
-# strength of relation between two CATEGORICAL variables
-# can be tested, e.g. using the Cramer's V coefficient
-# (calculated on the basis of Chi2 test statistic)
-# - Cramer's V  takes values from 0 to 1, where
-# higher values mean a stronger relationship
-# (if both variables have only two levels 
-# Cramer's V take values from -1 to 1)
-
-
-
-
-
-###
-#####
-####### Now let's see which independent variables should we choose
-
-# coffees_numeric_vars <- 
-#   sapply(coffee, is.numeric) %>% 
-#   which() %>% 
-#   names()
-# 
-# coffees_numeric_vars
-# 
-# 
-# coffees_correlations <- 
-#   cor(coffee_final[,coffees_numeric_vars],
-#       use = "pairwise.complete.obs")
-# 
-# coffees_correlations
-# 
-# corrplot(coffees_correlations, 
-#          method = "pie")
-# 
-# coffee_lm1 <- lm(Total.Cup.Points ~ Aroma,
-#                  data = coffee_final)
-# 
-# summary(coffee_lm1)
-# 
-# 
-# coffee_lm2 <- lm(Total.Cup.Points ~ Aroma + Flavor + Acidity +
-#                    Body + Balance + Sweetness + Category.One.Defects +Category.Two.Defects,
-#                  data = coffee_final)
-# 
-# summary(coffee_lm2)
-# 
-# # calculating predicted values based on the last model
-# predict(coffee_lm2)
-# 
-# ggplot(data.frame(error = coffee$Total.Cup.Points - predict(coffee_lm2)),
-#        aes(x = error)) +
-#   geom_histogram(fill = "blue",
-#                  bins = 100) +
-#   theme_bw()
-# 
-# # real values against the predicted
-# ggplot(data.frame(real = coffee$Total.Cup.Points,
-#                   predicted = predict(coffee_lm2)),
-#        aes(x = predicted, 
-#            y = real)) +
-#   geom_point(col = "blue") +
-#   theme_bw()
-# 
-# #Their correlation
-# cor(coffee$Total.Cup.Points,
-#     predict(coffee_lm2))
-# 
-# #All data
-# houses_lm3 <- lm(Total.Cup.Points ~ .,
-#                  data = coffee_final %>% 
-#                    dplyr::select(houses_variables_all)) # training data
-# 
-# 
-# summary(houses_lm4)
