@@ -1,11 +1,12 @@
 ############################################################
 ######## Machine Learning 1 Project - Small dataset ########
-########     Kenneth Petrykowski & Mateusz Majak    ########
+########               Mateusz Majak                ########
 ############################################################
 library(dplyr)
 library(readr)
 library(ggplot2)
 library(caret)
+library(class)
 library(tibble)
 library(purrr)
 library(corrplot)
@@ -13,8 +14,9 @@ library(DescTools)
 library(olsrr)
 library(mice)
 library(VIM)
-source("Mode.R")
+#source("Mode.R")
 library(verification)
+library(janitor)
 library(nnet)
 #getwd()
 #setwd("C:/Users/Admin/Documents/GIT/ProjectsML1")
@@ -142,7 +144,7 @@ coffee <- coffee %>%
   ) %>% ungroup()
 
 coffee %>%
-  select(starts_with("altitude")) %>%
+  dplyr::select(starts_with("altitude")) %>%
   summary()
 #impute_median seems to be the closest imputations to the original dataset
 #means and medians in subgroups do not give better results
@@ -161,14 +163,11 @@ colSums(is.na(coffee)) %>%
   sort()
 #Let's look on the Country.of.Origin
 table(coffee$Country.of.Origin)
-
-#There is one coffee without name of the Country of origin. We use mode in subgroups to input the name
+#There is one coffee without name of the Country of origin. We use mode to input the name
 coffee <- coffee %>% 
-  group_by(Processing.Method, Color) %>%
-  mutate(Country.of.Origin.impute.Gmode = if_else(is.na(Country.of.Origin), 
-                                        Mode(Country.of.Origin),
-                                        Country.of.Origin)) %>% 
-  ungroup()
+  dplyr::mutate(Country.of.Origin.impute.Gmode = if_else(is.na(Country.of.Origin),
+                                        Mode(Country.of.Origin, na.rm = TRUE),
+                                        Country.of.Origin))
 
 #Colombia assigned to NA
 #Only one observation was changed, so the distribution of Country.of.Origin.impute.Gmode
@@ -319,76 +318,6 @@ coffee[which(coffee$Bag.Weight=="80 kg"),"Bag.Weight"]    <- ">60"
 
 coffee$Bag.Weight <- factor(coffee$Bag.Weight)
 
-# #Now let's look on the Harvest.Year
-# #47 NAs in there
-# table(coffee$Harvest.Year)
-# #Data need some cleaning
-# coffee$Harvest.Year <- addNA(coffee$Harvest.Year)
-# levels(coffee$Harvest.Year)
-# levels(coffee$Harvest.Year)[47] <- "missing"
-# 
-# coffee$Harvest.Year <- as.character(coffee$Harvest.Year)
-# 
-# coffee[which(coffee$Harvest.Year=="4T/2010"|
-#                coffee$Harvest.Year=="23 July 2010"|
-#                coffee$Harvest.Year=="4T/10"|
-#                coffee$Harvest.Year=="March 2010"|
-#                coffee$Harvest.Year=="4t/2010"|
-#                coffee$Harvest.Year=="4T72010"|
-#                coffee$Harvest.Year=="47/2010"
-#              ),
-#        "Harvest.Year"] <- "2010"
-# 
-# coffee[which(coffee$Harvest.Year=="Sept 2009 - April 2010"|
-#                coffee$Harvest.Year=="December 2009-March 2010"|
-#                coffee$Harvest.Year=="2009/2010"|
-#                coffee$Harvest.Year=="2009-2010"|
-#                coffee$Harvest.Year=="2009 - 2010"|
-#                coffee$Harvest.Year=="2009 / 2010"|
-#                coffee$Harvest.Year=="Fall 2009"|
-#                coffee$Harvest.Year=="08/09 crop"
-#              ),
-#        "Harvest.Year"] <- "2009/2010"
-# 
-# coffee[which(coffee$Harvest.Year=="4t/2011"|
-#                coffee$Harvest.Year=="January 2011"|
-#                coffee$Harvest.Year=="3T/2011"|
-#                coffee$Harvest.Year=="1t/2011"|
-#                coffee$Harvest.Year==" 1T/2011"|
-#                coffee$Harvest.Year=="Spring 2011 in Colombia."|
-#                coffee$Harvest.Year=="Abril - Julio /2011"|
-#                coffee$Harvest.Year=="1T/2011"
-#              ),
-#        "Harvest.Year"] <- "2011"
-# 
-# coffee[which(coffee$Harvest.Year=="2010-2011"),
-#        "Harvest.Year"] <- "2010/2011"
-# 
-# coffee[which(coffee$Harvest.Year=="2013/2014"),
-#        "Harvest.Year"] <- "2013/2014"
-# 
-# coffee[which(coffee$Harvest.Year=="2016 / 2017"|
-#                coffee$Harvest.Year=="2016/2017"),
-#        "Harvest.Year"] <- "2016/2017"
-# 
-# coffee[which(coffee$Harvest.Year=="2018"|
-#                coffee$Harvest.Year=="2017 / 2018"),
-#        "Harvest.Year"] <- "2017/2018"
-# 
-# other_years <- which(coffee$Harvest.Year=="Mayo a Julio"|
-#                        coffee$Harvest.Year=="mmm"|
-#                        coffee$Harvest.Year=="TEST"|
-#                        coffee$Harvest.Year=="Abril - Julio"|
-#                        coffee$Harvest.Year=="August to December"|
-#                        coffee$Harvest.Year=="May-August"|
-#                        coffee$Harvest.Year=="January Through April")
-# coffee[other_years,]
-# coffee[other_years,"Harvest.Year"] <- "missing"
-# 
-# coffee$Harvest.Year <- factor(coffee$Harvest.Year)
-# 
-# table(coffee$Harvest.Year)
-
 #Now let's look on the  Processing.Method factor
 table(coffee$Processing.Method)
 #We group NA and Other together
@@ -397,12 +326,11 @@ levels(coffee$Processing.Method)
 coffee[which(coffee$Processing.Method=="Other"),"Processing.Method"] <- NA
 coffee$Processing.Method <- droplevels(coffee$Processing.Method)
 coffee$Processing.Method <- as.character(coffee$Processing.Method)
-typeof(coffee$Processing.Method)
 #Now let's deal with missing values
 coffee <- coffee %>% 
   group_by(Region) %>%
   mutate(Processing.Method.impute.Gmode = if_else(is.na(Processing.Method),
-                                                  Mode(Processing.Method),
+                                                  Mode(Processing.Method, na.rm = TRUE),
                                                   Processing.Method)) %>%
   ungroup()
 
@@ -418,13 +346,12 @@ coffee$Processing.Method %>%
 coffee$Processing.Method.impute.Gmode %>%
   table() %>%
   prop.table()
-#Distributions are similar
+#Distributions are quite similar
 
 #There are only NAs in Color and Variety color left
 #Let's look on the next factor - Color
 coffee$Color <- addNA(coffee$Color)
 table(coffee$Color)
-
 #I should group NA and None together
 # Blue-Green and Bluish-Green are the same colors, 
 # thus I group them
@@ -433,22 +360,19 @@ coffee[which(coffee$Color=="Blue-Green"),"Color"] <- "Bluish-Green"
 coffee$Color <- droplevels(coffee$Color)
 table(coffee$Color)
 coffee$Color <- as.character(coffee$Color)
+
 #267 NA values
 coffee <- coffee %>% 
-  group_by(Region,Processing.Method.impute.Gmode) %>%
+  group_by(Region) %>%
   mutate(Color.impute.Gmode = if_else(is.na(Color),
-                                      Mode(Color),
+                                      (Mode(Color, na.rm = TRUE)),
                                       Color)) %>%
   ungroup()
+
 
 coffee$Color.impute.Gmode <- addNA(coffee$Color.impute.Gmode)
 table(coffee$Color.impute.Gmode)
 
-coffee$Color.impute.Gmode <- as.character(coffee$Color.impute.Gmode)
-coffee <- coffee %>%
-  mutate(Color.impute.Gmode = if_else(is.na(Color.impute.Gmode),
-                                      Mode(Color),
-                                      Color.impute.Gmode))
 coffee$Color %>% 
   table() %>%
   prop.table()
@@ -457,8 +381,6 @@ coffee$Color.impute.Gmode %>%
   table() %>%
   prop.table()
 
-coffee$Color.impute.Gmode <- addNA(coffee$Color.impute.Gmode)
-coffee$Color.impute.Gmode <- as.factor(coffee$Color.impute.Gmode)
 coffee$Color.impute.Gmode <- droplevels(coffee$Color.impute.Gmode)
 table(coffee$Color.impute.Gmode)
 
@@ -498,9 +420,9 @@ coffee[which(coffee$Variety=="Moka Peaberry"),"Variety"]         <- "Bourbon"
 coffee[which(coffee$Variety=="Pacas"),"Variety"]                 <- "Bourbon"
 
 coffee <- coffee %>% 
-  group_by(Region,Processing.Method.impute.Gmode) %>%
+  group_by(Region, Color.impute.Gmode) %>%
   mutate(Variety.impute.Gmode = if_else(is.na(Variety),
-                                      Mode(Variety),
+                                      Mode(Variety, na.rm = TRUE),
                                       Variety)) %>%
   ungroup()
 
@@ -522,18 +444,17 @@ coffee$Variety.impute.Gmode <- as.factor(coffee$Variety.impute.Gmode)
 coffee$Variety.impute.Gmode <- droplevels(coffee$Variety.impute.Gmode)
 table(coffee$Variety.impute.Gmode)
 
-coffee$Variety.impute.Gmode <- as.character(coffee$Variety.impute.Gmode)
-coffee <- coffee %>% 
-  group_by(Bag.Weight,Color.impute.Gmode) %>%
-  mutate(Variety.impute.Gmode = if_else(is.na(Variety.impute.Gmode),
-                                        Mode(Variety.impute.Gmode),
-                                        Variety.impute.Gmode)) %>%
-  ungroup()
+coffee$Variety.impute.Gmode %>% 
+  table() %>%
+  prop.table()
 
-coffee$Variety.impute.Gmode <- addNA(coffee$Variety.impute.Gmode)
-coffee$Variety.impute.Gmode <- as.factor(coffee$Variety.impute.Gmode)
-coffee$Variety.impute.Gmode <- droplevels(coffee$Variety.impute.Gmode)
-table(coffee$Variety.impute.Gmode)
+coffee$Variety <- as.character(coffee$Variety)
+
+coffee$Variety %>%
+  table() %>%
+  prop.table()
+  
+coffee$Variety <- as.factor(coffee$Variety)
 #Distribution has changed, but Typica and Bourbon varieties are most popular 
 #in the World, so it is very likely to be truth
 
@@ -602,7 +523,6 @@ coffees_nzv_stats %>%
 #There are no near zero variance variables now
 
 # Now let's divide the set into learning and testing sample
-coffees_numeric_vars
 set.seed(987654321)
 
 coffees_which_train <- createDataPartition(coffee_final$Cupper.Points,
@@ -962,7 +882,7 @@ coef(coffees_lm1)[is.na(coef(coffees_lm1))]
 #Thus, I delete this variable from the analysis
 coffees_variables_all2 <-
   coffees_variables_all[-which(coffees_variables_all %in% 
-                                c("Region"))]
+                                c("Region","Country.of.Origin.impute.Gmode"))]
 
 coffees_lm1a <- lm(Cupper.Points ~ .,
                   data = coffees_train %>% 
@@ -979,8 +899,12 @@ ols_step_backward_p(coffees_lm1a,
 # final model details
 summary(coffees_lm1_backward_p$model)
 
-coffees_predicted <- predict(coffees_lm)
+coffees_variables_all3 <-
+  coffees_variables_all[-which(coffees_variables_all %in% 
+                                 coffees_lm1_backward_p$removed)]
 
+coffees_predicted <- predict(coffees_lm1)
+predict
 ggplot(data.frame(error = coffees_train$Cupper.Points - coffees_predicted),
        aes(x = error)) +
   geom_histogram(fill = "blue",
@@ -1001,11 +925,51 @@ cor(coffees_train$Cupper.Points,
 
 ### Evaluation
 #Residuals
-head(coffees_lm$residuals)
+head(coffees_lm1$residuals)
+hist(coffees_lm1$residuals, breaks = 30)
 
-hist(coffees_lm$residuals, breaks = 30)
+regressionMetrics <- function(real, predicted) {
+  MSE <- mean((real - predicted)^2)
+  RMSE <- sqrt(MSE)
+  MAE <- mean(abs(real - predicted))
+  MedAE <- median(abs(real - predicted))
+  MSLE <- mean((log(1 + real) - log(1 + predicted))^2)
+  TSS <- sum((real - mean(real))^2)
+  RSS <- sum((predicted - real)^2)
+  R2 <- 1 - RSS/TSS
+  
+  result <- data.frame(MSE, RMSE, MAE, MedAE, MSLE, R2)
+  return(result)
+}
 
+# model stats
+regressionMetrics(real = coffees_train$Cupper.Points,
+                  predicted = predict(coffees_lm1))
 
+### Validation
+# I create control
+ctrl_cv5 <- trainControl(method = "cv",
+                          number = 5)
 
+#Model estimation
+coffees_lm1a_train <- 
+  train(Cupper.Points ~ .,
+        data = coffees_train %>% 
+          dplyr::select(coffees_variables_all2),
+        method = "glm",
+        metric = "RMSE",
+        trControl = ctrl_cv5)
+
+summary(coffees_lm1a_train)
+
+coffees_lm1a_fitted <- predict(coffees_lm1a_train,
+                               coffees_train,
+                               type = "raw")
+
+set.seed(987654321)
+
+coffees_lm1a_train$resample
+summary(coffees_lm1a_train$resample$Rsquared)
+summary(coffees_lm1a_train$resample$RMSE)
 
 
