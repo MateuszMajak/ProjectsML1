@@ -35,4 +35,4 @@ colSums(is.na(players)) %>%
 players %>% 
   md.pattern(rotate.names = TRUE)
 
-
+a
