@@ -12,12 +12,15 @@ library(purrr)
 library(corrplot)
 library(DescTools)
 library(olsrr)
+library(nnet)
+library(lmtest)
 library(mice)
 library(VIM)
 library(verification)
 library(janitor)
 library(nnet)
 library(stringr)
+library(AER)
 #getwd()
 #setwd("C:/Users/mateu/Documents/GIT/ProjectsML1")
 players_full <- read.csv("players_20.csv",na.strings=c("","NA"))
@@ -36,28 +39,124 @@ players <-
 glimpse(players)
 #55 columns after deleting columns not good for being predictors
 
+#I will choose player_positions as a dependent variable, because it has no NAs
+#There are multiple positions for some players, so I divide such players into
+#different rows
+players <- 
+  players %>%
+  tidyr::separate_rows(player_positions, sep = ",")
+
+players$player_positions <- gsub(" ","",players$player_positions)
+# There are 15 positions. I will group them into 4 main positions:
+#Attacker, Midfielder, Defender and Goalkeeper
+
+players[which(
+  players$player_positions=="ST"|
+    players$player_positions=="LW"|
+    players$player_positions=="RW"|
+    players$player_positions=="CF"),
+  "player_positions"]  <- "Attacker"
+
+players[which(
+  players$player_positions=="CB"|
+    players$player_positions=="LB"|
+    players$player_positions=="RB"|
+    players$player_positions=="RWB"|
+    players$player_positions=="LWB"),
+  "player_positions"]  <-  "Defender"
+
+players[which(
+  players$player_positions=="CM"|
+    players$player_positions=="RM"|
+    players$player_positions=="LM"|
+    players$player_positions=="CAM"|
+    players$player_positions=="CDM"),
+  "player_positions"]  <- "Midfielder"
+
+players[which(
+  players$player_positions=="GK"),
+  "player_positions"]  <- "Goalkeeper"
+
+players <- unique(players)
+#Now there are 21747 rows in the dataset - there are some players who played
+#at different places on the field, which will for sure will be problematic
+#considering accuration of predictions, but in fact I will use more realistic
+#data, so maybe errors in prediction will show some similarities between
+#seemingly different positions in the field
+
+#I delete gk_kicking, gk_positioning, gk_diving, gk_handling,  gk_reflexes and
+#gk_speed because they are already represented by other columns: 
+#goalkeeping_kicking, goalkeeping_positioning, goalkeeping_reflexes,
+#goalkeeping_diving, goalkeeping_handling and movement_acceleration /
+#movement_sprint_speed
+#player_tags and player_traits are also unique values for some players -
+# other players do not have tags and traits - that's why I will also delete them
+#I delete team_position also, because it does not provide any additional
+#information about position
+players <- 
+  players %>% 
+  dplyr::select(-c("team_position","gk_kicking","gk_positioning","gk_diving",
+                   "gk_handling","gk_reflexes","gk_speed","player_tags",
+                   "player_traits"))
+
 # Counting NAs in every column
 colSums(is.na(players)) %>% 
   sort()
-#I will choose team_position as a dependent variable, because it has only one
-#position for each players. There are 240 missings, so I check if there are only
-#one poisition in player_positions for them and delete those who have more than
-#1 position.
-#Each position contains 2 or 3 letters, so I will choose only rows with max 3
-#characters in player_positions column
-NA_player_positions <- which(is.na(players$team_position))
-
-players <- players %>% 
-  dplyr::mutate(team_position = if_else(is.na(team_position),
-                                        player_positions,
-                                        team_position))
-
-more_than_1_pos <- which(str_length(players[,"team_position"])>3)
-
-players <- players[-more_than_1_pos,]
-#Now there is no NAs in dependent variable
 
 players %>% 
   md.pattern(rotate.names = TRUE)
+#Now there are 2036 rows with missing values in 6 columns: pace, shooting,
+#passing, dribbling, defending and physic. It's almost 10% of observation 
+# so i will omit them in the future analysis.
+NA_variables <- c("pace","shooting","passing","dribbling","defending",
+                       "physic")
 
+summary(players)
 
+#Most of the numerical variables are integers in 0-100 range
+#I will convert skill_moves and weak_foot from 1-5 to 0-100 range and also
+# height_cm and weight_kg to 0-100 range to normalize them. It can be helpful
+#in the future analysis
+players$weak_foot   <- players$weak_foot*100/5
+players$skill_moves <- players$skill_moves*100/5
+players$height_cm   <- players$height_cm/(max(players$height_cm))*100
+players$weight_kg   <- players$weight_kg/(max(players$weight_kg))*100
+
+glimpse(players)
+#There are 3 character variables in the dataset: dependent variable
+#player_positions, preferred_foot and work_rate. I convert them into factors
+players$player_positions <- as.factor(players$player_positions)
+players$preferred_foot   <- as.factor(players$preferred_foot)
+players$work_rate        <- as.factor(players$work_rate)
+
+#and I create list of factor and numerical predictors
+players_numeric_vars <- 
+  sapply(players, is.numeric) %>% 
+  which() %>% 
+  names()
+
+players_factor_vars <- 
+  sapply(players, is.factor) %>% 
+  which() %>% 
+  names()
+
+# Now let's divide the set into learning and testing sample
+set.seed(987654321)
+
+players_which_train <- createDataPartition(players$player_positions,
+                                           p = 0.7, 
+                                           list = FALSE) 
+head(players_which_train)
+
+players_train <- players[players_which_train,]
+players_test <- players[-players_which_train,]
+
+#The distribution of the target variable in both samples
+players_train$player_positions %>% 
+  table() %>%
+  prop.table()
+
+players_test$player_positions %>% 
+  table() %>%
+  prop.table()
+#Very similar distributions
