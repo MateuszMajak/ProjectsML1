@@ -108,8 +108,10 @@ players %>%
 #Now there are 2036 rows with missing values in 6 columns: pace, shooting,
 #passing, dribbling, defending and physic. It's almost 10% of observation 
 # so i will omit them in the future analysis.
-NA_variables <- c("pace","shooting","passing","dribbling","defending",
-                       "physic")
+players <- 
+  players %>% 
+  dplyr::select(-c("pace","shooting","passing","dribbling","defending",
+                   "physic"))
 
 summary(players)
 
@@ -160,3 +162,66 @@ players_test$player_positions %>%
   table() %>%
   prop.table()
 #Very similar distributions
+players_correlations <- 
+  cor(players_train[,players_numeric_vars],
+      use = "pairwise.complete.obs")
+
+corrplot(players_correlations, 
+         method = "pie",tl.cex = 0.5)
+#Goalkeeping and defending variables are very highly correlated to each other
+
+#Highly correlated variables - candidates to be excluded from the analysis
+highly_correlated_variables <- findCorrelation(players_correlations,
+                cutoff = 0.90,
+                names = TRUE)
+
+###logit model by multinom()
+players_mlogit1 <- multinom(player_positions ~ .,
+                    data = players_train)
+
+players_mlogit1_fitted <- predict(players_mlogit1) 
+
+table(players_mlogit1_fitted,
+      players_train$player_positions)
+
+lrtest(players_mlogit1)
+#I can reject the null hypothesis on the 0.001 level
+
+
+# Comparison of real and predicted values
+accuracy_multinom <- function(predicted, real) {
+  ctable_m <- table(predicted, 
+                    real)
+  accuracy <- (100 * sum(diag(ctable_m)) / sum(ctable_m))
+  base_ <- diag(ctable_m) / colSums(ctable_m)
+  balanced_accuracy <- mean(100 * ifelse(is.na(base_), 0, base_))
+  base_2 <- diag(ctable_m) / rowSums(ctable_m)
+  correctly_predicted <- mean(100 * ifelse(is.na(base_2), 0, base_2))
+  
+  return(c(accuracy = accuracy, 
+           balanced_accuracy = balanced_accuracy,
+           balanced_correctly_predicted = correctly_predicted))
+}
+
+accuracy_multinom(predicted = players_mlogit1_fitted, 
+                  real = players_train$player_positions)
+
+ctrl_nocv <- trainControl(method = "none")
+
+churn_logit2_train <- 
+  train(players_test ~ .,
+        data = churn_train %>% 
+          # we exclude customerID
+          dplyr::select(-customerID),
+        # model type
+        method = "glm",
+        # family of models
+        family = "binomial",
+        # train control
+        trControl = ctrl_nocv)
+
+# lets see the result
+
+churn_logit2_train
+
+summary(churn_logit2_train)
