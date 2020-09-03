@@ -23,11 +23,14 @@ library(nnet)
 coffee_full <- read.csv("arabica_data_cleaned.csv",na.strings=c("","NA"))
 glimpse(coffee_full)
 
-#We create coffee dataset without clumsy data like row numbers, unique codes and columns with same informations.
+#We create coffee dataset without clumsy data like row numbers, unique codes 
+#and columns with same informations.
 coffee <- coffee_full
-coffee[,c("X","Species","Certification.Address","Certification.Contact","Lot.Number","Mill","ICO.Number","Expiration",
-          "Grading.Date","Company","Farm.Name","Owner","Producer","Owner.1","In.Country.Partner","Region",
-          "Altitude","Certification.Body","Harvest.Year")] <- NULL
+coffee[,c("X","Species","Certification.Address","Certification.Contact",
+          "Lot.Number","Mill","ICO.Number","Expiration","Grading.Date",
+          "Company","Farm.Name","Owner","Producer","Owner.1",
+          "In.Country.Partner","Region","Altitude","Certification.Body",
+          "Harvest.Year")] <- NULL
 
 # Counting NAs in every column
 colSums(is.na(coffee)) %>% 
@@ -88,13 +91,16 @@ coffee[altitude_outliers,"altitude_mean_meters"] <- NA
 coffee <- coffee %>% 
   # we create a new columns altitude_._meters.impute_mean
   mutate(altitude_low_meters.impute_mean = ifelse(is.na(altitude_low_meters), 
-                                                  mean(altitude_low_meters, na.rm = TRUE),
+                                                  mean(altitude_low_meters, 
+                                                       na.rm = TRUE),
                                                   altitude_low_meters),
          altitude_high_meters.impute_mean = ifelse(is.na(altitude_high_meters), 
-                                                  mean(altitude_high_meters, na.rm = TRUE),
+                                                  mean(altitude_high_meters,
+                                                       na.rm = TRUE),
                                                   altitude_high_meters),
          altitude_mean_meters.impute_mean = ifelse(is.na(altitude_mean_meters), 
-                                                   mean(altitude_mean_meters, na.rm = TRUE),
+                                                   mean(altitude_mean_meters,
+                                                        na.rm = TRUE),
                                                    altitude_mean_meters)
          )
 
@@ -103,13 +109,16 @@ coffee <- coffee %>%
 coffee <- coffee %>% 
   # we create a new columns altitude_._meters.impute_median
   mutate(altitude_low_meters.impute_median = ifelse(is.na(altitude_low_meters), 
-                                                  median(altitude_low_meters, na.rm = TRUE),
+                                                  median(altitude_low_meters,
+                                                         na.rm = TRUE),
                                                   altitude_low_meters),
          altitude_high_meters.impute_median = ifelse(is.na(altitude_high_meters), 
-                                                     median(altitude_high_meters, na.rm = TRUE),
+                                                     median(altitude_high_meters,
+                                                            na.rm = TRUE),
                                                      altitude_high_meters),
          altitude_mean_meters.impute_median = ifelse(is.na(altitude_mean_meters),
-                                                     median(altitude_mean_meters, na.rm = TRUE),
+                                                     median(altitude_mean_meters,
+                                                            na.rm = TRUE),
                                                      altitude_mean_meters)
   )
 
@@ -119,27 +128,33 @@ coffee <- coffee %>%
   group_by(Country.of.Origin) %>%
   # we create a new column altitude_low_meters.impute.Gmean
   mutate(altitude_low_meters.impute.Gmean = ifelse(is.na(altitude_low_meters),
-                                                   mean(altitude_low_meters, na.rm = TRUE),
+                                                   mean(altitude_low_meters,
+                                                        na.rm = TRUE),
                                                    altitude_low_meters),
          # a new column altitude_low_meters.impute.Gmed
          altitude_low_meters.impute.Gmed = ifelse(is.na(altitude_low_meters),
-                                                  median(altitude_low_meters, na.rm = TRUE),
+                                                  median(altitude_low_meters,
+                                                         na.rm = TRUE),
                                                   altitude_low_meters),
          # a new column altitude_high_meters.impute.Gmean
          altitude_high_meters.impute.Gmean = ifelse(is.na(altitude_high_meters),
-                                                    median(altitude_high_meters, na.rm = TRUE),
+                                                    median(altitude_high_meters,
+                                                           na.rm = TRUE),
                                                     altitude_high_meters),
          # a new column altitude_high_meters.impute.Gmed
          altitude_high_meters.impute.Gmed = ifelse(is.na(altitude_high_meters), 
-                                                   mean(altitude_high_meters, na.rm = TRUE),
+                                                   mean(altitude_high_meters,
+                                                        na.rm = TRUE),
                                                    altitude_high_meters),
          # a new column altitude_mean_meters.impute.Gmean
          altitude_mean_meters.impute.Gmean = ifelse(is.na(altitude_mean_meters),
-                                                    median(altitude_mean_meters, na.rm = TRUE),
+                                                    median(altitude_mean_meters,
+                                                           na.rm = TRUE),
                                                     altitude_mean_meters),
          # a new column altitude_mean_meters.impute.Gmed
          altitude_mean_meters.impute.Gmed = ifelse(is.na(altitude_mean_meters), 
-                                                   mean(altitude_mean_meters, na.rm = TRUE),
+                                                   mean(altitude_mean_meters,
+                                                        na.rm = TRUE),
                                                    altitude_mean_meters)
   ) %>% ungroup()
 
@@ -178,7 +193,9 @@ coffee <- coffee %>%
 table(coffee$Country.of.Origin.impute.Gmode)
 coffee[,"Region"] <- NA
 coffee$Region <- as.character(coffee$Region)
-coffee$Country.of.Origin.impute.Gmode <- as.character(coffee$Country.of.Origin.impute.Gmode)
+
+coffee$Country.of.Origin.impute.Gmode <- 
+  as.character(coffee$Country.of.Origin.impute.Gmode)
 #East Africa group
 coffee[which(coffee$Country.of.Origin.impute.Gmode=="Zambia"|
                coffee$Country.of.Origin.impute.Gmode=="Uganda"|
@@ -239,7 +256,9 @@ coffee[which(coffee$Country.of.Origin.impute.Gmode=="Mexico"|
        "Region"] <- "North America"
 
 coffee$Region <- as.factor(coffee$Region)
-coffee$Country.of.Origin.impute.Gmode <- as.factor(coffee$Country.of.Origin.impute.Gmode)
+
+coffee$Country.of.Origin.impute.Gmode <- 
+  as.factor(coffee$Country.of.Origin.impute.Gmode)
 
 #Now let's look on the Bag.Weight factor
 table(coffee$Bag.Weight)
@@ -335,9 +354,15 @@ coffee <- coffee %>%
   ungroup()
 
 coffee$Processing.Method <- as.factor(coffee$Processing.Method)
-coffee$Processing.Method.impute.Gmode <- as.factor(coffee$Processing.Method.impute.Gmode)
-coffee$Processing.Method.impute.Gmode <- addNA(coffee$Processing.Method.impute.Gmode)
-coffee$Processing.Method.impute.Gmode <- droplevels(coffee$Processing.Method.impute.Gmode)
+
+coffee$Processing.Method.impute.Gmode <- 
+  as.factor(coffee$Processing.Method.impute.Gmode)
+
+coffee$Processing.Method.impute.Gmode <- 
+  addNA(coffee$Processing.Method.impute.Gmode)
+
+coffee$Processing.Method.impute.Gmode <- 
+  droplevels(coffee$Processing.Method.impute.Gmode)
 
 coffee$Processing.Method %>% 
   table() %>%
@@ -471,11 +496,14 @@ coffee[which(coffee$Total.Cup.Points==0),]
 coffee <- coffee[-which(coffee$Total.Cup.Points==0),]
 
 #I create new dataframe without variables which I will not use in the analysis
-#I also delete Total.Cup.Points, because it is the sum of Aroma, Flavor, Aftertaste, Acidity, Body, Balance,
-#Uniformity, Clean.Cup, Sweetness and Cupper.Points
+#I also delete Total.Cup.Points, because it is the sum of Aroma, Flavor, 
+#Aftertaste, Acidity, Body, Balance,Uniformity, Clean.Cup, Sweetness and 
+#Cupper.Points
 coffee_final <- coffee
-coffee_final[,c("Country.of.Origin","Processing.Method","Variety","altitude_low_meters","altitude_high_meters",
-             "altitude_mean_meters","Color","altitude_mean_meters.impute_mean","altitude_low_meters.impute_mean",
+coffee_final[,c("Country.of.Origin","Processing.Method","Variety",
+                "altitude_low_meters","altitude_high_meters",
+             "altitude_mean_meters","Color","altitude_mean_meters.impute_mean",
+             "altitude_low_meters.impute_mean",
              "altitude_high_meters.impute_mean","Total.Cup.Points")] <- NULL
 
 # Before split the dataset, I check if there are variables
@@ -530,12 +558,10 @@ coffees_which_train <- createDataPartition(coffee_final$Cupper.Points,
                                           list = FALSE) 
 head(coffees_which_train)
 
-# we need to apply this index for data division
 coffees_train <- coffee_final[coffees_which_train,]
 coffees_test <- coffee_final[-coffees_which_train,]
 
-# let's check the distribution of
-# the target variable in both samples
+# The distribution of the target variable in both samples
 summary(coffees_train$Cupper.Points)
 summary(coffees_test$Cupper.Points)
 #similar distribution in both samples
@@ -586,13 +612,16 @@ ggplot(coffees_train,
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-# 5 coffees clearly not matching the relationship - 2 coffees with the flavour < 8 but Cupper.Points = 10 
+# 5 coffees clearly not matching the relationship - 2 coffees with the 
+#flavour < 8 but Cupper.Points = 10 
 # 3 coffees with Cupper.Points < 5.5 and Flavor > 7.5
 # maybe exclude these observations from the sample
 coffees_outliers <- NULL
-coffees_outliers_flavor <- which(coffees_train$Flavor < 8 & coffees_train$Cupper.Points == 10)
+coffees_outliers_flavor <- which(coffees_train$Flavor < 8 &
+                                   coffees_train$Cupper.Points == 10)
 coffees_outliers_flavor <- append(coffees_outliers_flavor,
-                                  which(coffees_train$Flavor > 7.5 & coffees_train$Cupper.Points < 5.5))
+                                  which(coffees_train$Flavor > 7.5 &
+                                          coffees_train$Cupper.Points < 5.5))
 
 coffees_outliers <- append(coffees_outliers,coffees_outliers_flavor)
 
@@ -606,9 +635,11 @@ ggplot(coffees_train,
 
 # 5 coffees clearly notmatching the relationship - 
 #they look similar to the previous values from Flavor 
-coffees_outliers_aftertaste <- which(coffees_train$Aftertaste >= 7.5 & coffees_train$Cupper.Points < 5.5)
+coffees_outliers_aftertaste <- which(coffees_train$Aftertaste >= 7.5 &
+                                       coffees_train$Cupper.Points < 5.5)
 coffees_outliers_aftertaste <- append(coffees_outliers_aftertaste,
-                                      which(coffees_train$Aftertaste < 8 & coffees_train$Cupper.Points == 10))
+                                      which(coffees_train$Aftertaste < 8 &
+                                              coffees_train$Cupper.Points == 10))
 identical(sort(coffees_outliers_flavor),sort(coffees_outliers_aftertaste))
 # They were exactly the same outliers 
 
@@ -619,11 +650,14 @@ ggplot(coffees_train,
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-#4 clear outliers - Cupper.Points = 10 and Balance = 7 ; Balance > 7.5 and Cupper.Points < 5.5
-coffees_outliers_balance <- which(coffees_train$Balance == 7 & coffees_train$Cupper.Points == 10)
+#4 clear outliers - Cupper.Points = 10 and Balance = 7 ; Balance > 7.5 and 
+#Cupper.Points < 5.5
+coffees_outliers_balance <- which(coffees_train$Balance == 7 &
+                                    coffees_train$Cupper.Points == 10)
 # Actually there are 2 outliers with exact value of Balance and Cupper.Points
 coffees_outliers_balance <- append(coffees_outliers_balance,
-                                   which(coffees_train$Balance > 7.5 & coffees_train$Cupper.Points < 5.5))
+                                   which(coffees_train$Balance > 7.5 &
+                                           coffees_train$Cupper.Points < 5.5))
 identical(sort(coffees_outliers_flavor),sort(coffees_outliers_balance))
 # They were exactly the same outliers
 
@@ -634,10 +668,13 @@ ggplot(coffees_train,
   geom_point(col = "blue") +
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
-#4 clear new outliers - Cupper.Points = 10 and Aroma < 7.75 ; Cupper.Points < 5.5 and Aroma > 7.5
-coffees_outliers_aroma <- which(coffees_train$Aroma < 7.75 & coffees_train$Cupper.Points == 10)
+#4 clear new outliers - Cupper.Points = 10 and Aroma < 7.75 ;
+#Cupper.Points < 5.5 and Aroma > 7.5
+coffees_outliers_aroma <- which(coffees_train$Aroma < 7.75 &
+                                  coffees_train$Cupper.Points == 10)
 coffees_outliers_aroma <- append(coffees_outliers_aroma,
-                                   which(coffees_train$Aroma > 7.5 & coffees_train$Cupper.Points < 5.5))
+                                   which(coffees_train$Aroma > 7.5 &
+                                           coffees_train$Cupper.Points < 5.5))
 #These outliers were marked earlier
 
 #Acidity
@@ -650,7 +687,8 @@ ggplot(coffees_train,
 # At least 2 clear outliers
 which(coffees_train$Acidity < 7.5 & coffees_train$Cupper.Points == 10)
 # 2 outliers marked earlier
-coffees_outliers_acidity <- which(coffees_train$Acidity < 5.5 & coffees_train$Cupper.Points > 7.5)
+coffees_outliers_acidity <- which(coffees_train$Acidity < 5.5 &
+                                    coffees_train$Cupper.Points > 7.5)
 # 1 new outlier
 coffees_outliers <- append(coffees_outliers,coffees_outliers_acidity)
 
@@ -664,7 +702,8 @@ ggplot(coffees_train,
 #At least 2 clear outliers
 which(coffees_train$Body == 7 & coffees_train$Cupper.Points == 10)
 # 2 outliers marked earlier
-coffees_outliers_body <- which(coffees_train$Body < 5.5 & coffees_train$Cupper.Points > 7.5)
+coffees_outliers_body <- which(coffees_train$Body < 5.5 &
+                                 coffees_train$Cupper.Points > 7.5)
 # 1 new outlier
 coffees_outliers <- append(coffees_outliers,coffees_outliers_body)
 
@@ -694,7 +733,8 @@ ggplot(coffees_train,
   geom_smooth(method = "lm", se = FALSE) +
   theme_bw()
 #3 clear outliers - Defects >= 15 and Cupper.Points above 6.5
-coffees_outliers_cat1_defects <- which(coffees_train$Category.One.Defects >= 15 & coffees_train$Cupper.Points > 6.5)
+coffees_outliers_cat1_defects <- which(coffees_train$Category.One.Defects >= 15 &
+                                         coffees_train$Cupper.Points > 6.5)
 coffees_outliers <- append(coffees_outliers,coffees_outliers_cat1_defects)
 
 #altitude_mean_meters.impute_median
@@ -710,7 +750,8 @@ ggplot(coffees_train,
 findCorrelation(coffee_correlations,
                 cutoff = 0.80,
                 names = TRUE)
-# these are potential candidates to be excluded from the model because of the high correlation between them
+# these are potential candidates to be excluded from the model because of
+#the high correlation between them
 
 ### qualitative (categorical) variables ###
 coffees_categorical_vars <-
@@ -753,8 +794,8 @@ ggplot(coffees_train,
            y = Cupper.Points)) +
   geom_boxplot(fill = "red") +
   theme_bw()
-#there can be seen some relationships between these variables but there are countries with only few coffees
-#Thus, we probably choose the region 
+#there can be seen some relationships between these variables but
+#there are countries with only few coffees. Thus, we probably choose the region. 
 ggplot(coffees_train,
        aes(x = Region,
            y = Cupper.Points)) +
@@ -853,7 +894,8 @@ DescTools::CramerV(coffees_train$Bag.Weight,
 #all coffees_train variables
 coffees_variables_all <- names(coffees_train)
 
-#altitudes are very highly correlated to each other, so I chose only altitude_mean_meters.impute_median
+#altitudes are very highly correlated to each other, so I chose only
+#altitude_mean_meters.impute_median
 coffees_variables_all <-
   coffees_variables_all[!coffees_variables_all %in% 
                           c("altitude_low_meters.impute_median",
