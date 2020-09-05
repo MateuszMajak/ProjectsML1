@@ -651,41 +651,43 @@ parametersC_sigma <-
 ```{r}
 set.seed(987654321)
 
-data1.svm_poly <- train(group ~ X1 + X2, 
-                        data = data1_train, 
+players.svm_poly <- train(player_positions ~ ., 
+                        data = players_train, 
                         method = "svmPoly",
                         tuneGrid = svm_parametersPoly,
-                        trControl = ctrl_cv5x3)
+                        trControl = control_cv10,
+                        preProcess = c("scale"))
 
-data1.svm_poly
+players.svm_poly
 
-plot(data1.svm_poly$finalModel)
+plot(players.svm_poly$finalModel)
 
-data1_test$fore_svm_poly <- predict(data1.svm_poly, 
-                                    newdata = data1_test)
+players_test$fore_svm_poly <- predict(players.svm_poly, 
+                                    newdata = players_test)
 
-confusionMatrix(data1_test$fore_svm_poly,
-                data1_test$group,
-                positive = "1")
+confusionMatrix(players_test$fore_svm_poly,
+                players_test$player_positions,
+                positive = "X")
 
-data1.svm_Radial1 <- train(group ~ X1 + X2,
-                           data = data1_train, 
+players.svm_Radial <- train(player_positions ~ .,
+                           data = players_train, 
                            method = "svmRadial",
                            tuneGrid = parametersC_sigma,
-                           trControl = ctrl_cv5x3)
+                           trControl = control_cv10,
+                           preProcess = c("scale"))
 
-data1.svm_Radial1
+players.svm_Radial
 
-data1.svm_Radial1$finalModel
+players.svm_Radial$finalModel
 
-plot(data1.svm_Radial1$finalModel)
+plot(players.svm_Radial$finalModel)
 
-data1_test$fore_svm_Radial1 <- predict(data1.svm_Radial1, 
-                                       newdata = data1_test)
+players_test$fore_svm_Radial <- predict(players.svm_Radial, 
+                                       newdata = players_test)
 
-confusionMatrix(data1_test$fore_svm_Radial1,
-                data1_test$group,
-                positive = "1")
+confusionMatrix(players_test$fore_svm_Radial,
+                players_test$player_positions,
+                positive = "X")
 
 ```
 
