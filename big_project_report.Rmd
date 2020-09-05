@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(readr)
 library(ggplot2)
+library(tidyverse)
 library(caret)
 library(class)
 library(tibble)
@@ -31,6 +32,8 @@ library(stringr)
 library(AER)
 source("functions/F_accuracy_multinom.R")
 library(MLmetrics)
+library(kernlab)
+library(verification)
 
 players_full <- read.csv("players_20.csv",na.strings=c("","NA"))
 ```
@@ -454,20 +457,246 @@ I save the most highly correlated variables as candidates to be excluded from
 the analysis. They can give very little information about position and increase
 time consumption of computing models.
 ```{r}
-highly_correlated_variables <- findCorrelation(players_correlations,
+correlated_variables_90 <- findCorrelation(players_correlations,
                 cutoff = 0.90,
                 names = TRUE)
+
+correlated_variables_80 <- findCorrelation(players_correlations,
+                cutoff = 0.80,
+                names = TRUE)
 ```
+
+Before we start modelling, let's look on the factor variables:
+```{r}
+ggplot(players, aes(x = preferred_foot)) + geom_bar()
+ggplot(players, aes(x = work_rate)) + geom_bar()
+```
+We can see that there are much more players with the right foot preferred.
+Only `r sum(players$preferred_foot == "Left")/sum(players$preferred_foot == "Right")*100`
+of players prefer their left foot.
+
+Work rate is rate of working in attack and defense. For example, High/Low means that
+player works hard in attack and does not work hard in the defense, but it is more
+mental that the real position on the field, so there are defenders with Low/Low etc.
+
+We can see, that most of the players have Medium/Medium work rate. Other groups are
+smaller, but only Low/Low seems to be really small and may not provide efficient
+value to model. However, we can not add this group to another, so I will keep it.
 
 ##Data modelling
 Now we are ready to try to run some models and predict players position on the field.
 
-###logit model by multinom()
+###Logit model
 
-
+I run multinomial logit model without variables with correlation higher than 0.8
+and without preferred_foot variable.
 ```{r}
+players_mlogit1a <- multinom(player_positions ~ .,
+                    data = players_train %>% 
+                      dplyr::select(-c(all_of(correlated_variables_80),"preferred_foot")))
+
+players_mlogit1a_fitted <- predict(players_mlogit1a) 
+
+table(players_mlogit1a_fitted,
+      players_train$player_positions)
+```
+Now I run multinomial logit model without variables with correlation higher than 0.9
+and without preferred_foot variable.
+```{r}
+players_mlogit1b <- multinom(player_positions ~ .,
+                    data = players_train %>% 
+                      dplyr::select(-c(all_of(correlated_variables_90),"preferred_foot")))
+
+players_mlogit1b_fitted <- predict(players_mlogit1b) 
+
+table(players_mlogit1b_fitted,
+      players_train$player_positions)
+```
+
+And now I run multinomial logit model with every variable.
+```{r}
+players_mlogit2 <- multinom(player_positions ~ .,
+                    data = players_train)
+
+players_mlogit2_fitted <- predict(players_mlogit2) 
+
+table(players_mlogit2_fitted,
+      players_train$player_positions)
+```
+
+Likelihood ratio test:
+```{r}
+lrtest(players_mlogit1a)[5]
+lrtest(players_mlogit1b)[5]
+lrtest(players_mlogit2)[5]
 
 ```
+The null hypothesis can be rejected on the 0.001 level in all models.
+
+Now I am comparing real and predicted values:
+
+```{r}
+accuracy_multinom(predicted = players_mlogit1a_fitted, 
+                  real = players_train$player_positions)
+
+accuracy_multinom(predicted = players_mlogit1b_fitted, 
+                  real = players_train$player_positions)
+
+accuracy_multinom(predicted = players_mlogit2_fitted, 
+                  real = players_train$player_positions)
+```
+Multinomial logit model without variables with correlation higher than 0.9
+and without preferred_foot variable has the highest accuracy - 87.72356.
+Accuracy is pretty high, but can it be higher? Let's find out.
+
+###KNN model
+
+I will start from the defining the training controls - it will be no 
+cross validation and 10-fold cross validation control. I will compare the models
+with and without cross validation.
+
+```{r}
+control_nocv <- trainControl(method = "none")
+
+control_cv10 <- trainControl(method = "cv",
+                          number = 10,
+                          classProbs = TRUE)
+```
+
+Now I compute 4 models - two without cross validation and two with cross 
+validation (full data and data with highly correlated variables and 
+preferred_foot variable excluded).
+
+I try many k values to obtain possibly highest accuracy and scale all variables 
+to range [0, 1].
+```{r}
+set.seed(987654321)
+
+test_k <- data.frame(k = seq(1, 99, 4))
+
+players_train_knn1a <- 
+  train(player_positions ~ .,
+        data = players_train %>% 
+          dplyr::select(-c(all_of(correlated_variables_90),"preferred_foot")),
+        method = "knn",
+        trControl = control_nocv,
+        tuneGrid = test_k,
+        preProcess = c("range"))
+
+players_train_knn1b <- 
+  train(player_positions ~ .,
+        data = players_train,
+        method = "knn",
+        trControl = control_nocv,
+        tuneGrid = test_k,
+        preProcess = c("range"))
+
+players_train_knn2a <- 
+  train(player_positions ~ .,
+        data = players_train %>% 
+          dplyr::select(-c(all_of(correlated_variables_90),"preferred_foot")),
+        method = "knn",
+        trControl = control_cv10,
+        tuneGrid = test_k,
+        preProcess = c("range"))
+
+players_train_knn2b <- 
+  train(player_positions ~ .,
+        data = players_train,
+        method = "knn",
+        trControl = control_cv10,
+        tuneGrid = test_k,
+        preProcess = c("range"))
+
+par(mfrow=c(2,2))
+plot(players_train_knn1a)
+plot(players_train_knn1b)
+plot(players_train_knn2a)
+plot(players_train_knn2b)
+```
+
+And let's look on the accuracy of each model:
+```{r}
+players_test_forecasts <- 
+  data.frame(players_train_knn1a = predict(players_train_knn1a,
+                                         players_test),
+             players_train_knn1b = predict(players_train_knn1b,
+                                        players_test),
+             players_train_knn2a = predict(players_train_knn2a,
+                                          players_test),
+             players_train_knn2b = predict(players_train_knn2b,
+                                                 players_test))
+
+sapply(players_test_forecasts,
+       function(x) accuracy_multinom(predicted = x,
+                                        real = players_test$player_positions))
+```
+
+
+###SVM model
+
+Training controls are already defined. I would like to try many parameters 
+values to find the best one so I create grids of parameters for polynomial and 
+radial basis kernel:
+```{r}
+svm_parametersPoly <- expand.grid(C = c(0.001, 0.01, 0.05, 0.1, 0.5, 1),
+                                  degree = 2:5, 
+                                  scale = 1)
+
+parametersC_sigma <- 
+  expand.grid(C = c(0.01, 0.05, 0.1, 0.5, 1, 5, 10, 25, 50, 100),
+              sigma = c(0.05, 0.1, 0.2, 0.5, 1, 10, 100, 1000))
+```
+
+```{r}
+set.seed(987654321)
+
+data1.svm_poly <- train(group ~ X1 + X2, 
+                        data = data1_train, 
+                        method = "svmPoly",
+                        tuneGrid = svm_parametersPoly,
+                        trControl = ctrl_cv5x3)
+
+data1.svm_poly
+
+plot(data1.svm_poly$finalModel)
+
+data1_test$fore_svm_poly <- predict(data1.svm_poly, 
+                                    newdata = data1_test)
+
+confusionMatrix(data1_test$fore_svm_poly,
+                data1_test$group,
+                positive = "1")
+
+data1.svm_Radial1 <- train(group ~ X1 + X2,
+                           data = data1_train, 
+                           method = "svmRadial",
+                           tuneGrid = parametersC_sigma,
+                           trControl = ctrl_cv5x3)
+
+data1.svm_Radial1
+
+data1.svm_Radial1$finalModel
+
+plot(data1.svm_Radial1$finalModel)
+
+data1_test$fore_svm_Radial1 <- predict(data1.svm_Radial1, 
+                                       newdata = data1_test)
+
+confusionMatrix(data1_test$fore_svm_Radial1,
+                data1_test$group,
+                positive = "1")
+
+```
+
+
+
+
+
+
+
+
+
 
 ```{r, echo=FALSE}
 plot(pressure)
