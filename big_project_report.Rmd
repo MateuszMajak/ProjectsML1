@@ -545,8 +545,7 @@ accuracy_multinom(predicted = players_mlogit1b_fitted,
 accuracy_multinom(predicted = players_mlogit2_fitted, 
                   real = players_train$player_positions)
 ```
-Multinomial logit model without variables with correlation higher than 0.9
-and without preferred_foot variable has the highest accuracy - 87.72356.
+Multinomial logit model with all variables has the highest accuracy
 Accuracy is pretty high, but can it be higher? Let's find out.
 
 ###KNN model
@@ -557,6 +556,10 @@ with and without cross validation.
 
 ```{r}
 control_nocv <- trainControl(method = "none")
+
+control_cv2 <- trainControl(method = "cv",
+                          number = 2,
+                          classProbs = TRUE)
 
 control_cv10 <- trainControl(method = "cv",
                           number = 10,
@@ -579,7 +582,7 @@ players_train_knn1a <-
         data = players_train %>% 
           dplyr::select(-c(all_of(correlated_variables_90),"preferred_foot")),
         method = "knn",
-        trControl = control_nocv,
+        trControl = control_cv2,
         tuneGrid = test_k,
         preProcess = c("range"))
 
@@ -587,7 +590,7 @@ players_train_knn1b <-
   train(player_positions ~ .,
         data = players_train,
         method = "knn",
-        trControl = control_nocv,
+        trControl = control_cv2,
         tuneGrid = test_k,
         preProcess = c("range"))
 
@@ -613,6 +616,12 @@ plot(players_train_knn1a)
 plot(players_train_knn1b)
 plot(players_train_knn2a)
 plot(players_train_knn2b)
+```
+```{r}
+players_train_knn1a$finalModel$k
+players_train_knn1b$finalModel$k
+players_train_knn2a$finalModel$k
+players_train_knn2b$finalModel$k
 ```
 
 And let's look on the accuracy of each model:
@@ -666,8 +675,7 @@ players_test$fore_svm_poly <- predict(players.svm_poly,
                                     newdata = players_test)
 
 confusionMatrix(players_test$fore_svm_poly,
-                players_test$player_positions,
-                positive = "X")
+                players_test$player_positions)
 
 players.svm_Radial <- train(player_positions ~ .,
                            data = players_train, 
@@ -686,8 +694,7 @@ players_test$fore_svm_Radial <- predict(players.svm_Radial,
                                        newdata = players_test)
 
 confusionMatrix(players_test$fore_svm_Radial,
-                players_test$player_positions,
-                positive = "X")
+                players_test$player_positions)
 
 ```
 
