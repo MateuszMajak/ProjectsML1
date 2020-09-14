@@ -1,14 +1,9 @@
 ---
-title: "Football Players Classification Project"
+title: "Football Players Classification"
 author: "Mateusz Majak"
-date: "5 09 2020"
+date: "13.09.2020"
 output: html_document
 ---
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 ```{r setup, include=FALSE}
 library(dplyr)
 library(readr)
@@ -30,18 +25,21 @@ library(janitor)
 library(nnet)
 library(stringr)
 library(AER)
+library(cvms)
 source("functions/F_accuracy_multinom.R")
 library(MLmetrics)
 library(kernlab)
 library(verification)
+library(glmnet)
+library(sda)
+library(mda)
 
 players_full <- read.csv("players_20.csv",na.strings=c("","NA"))
 ```
 
 
-#Football Players Classification
+## About dataset
 
-##About dataset
 I decided to analyse the football players statistics scraped from 
 https://sofifa.com/ and published on https://www.kaggle.com/ platform.
 
@@ -57,7 +55,8 @@ glimpse(players_full)
 Data contain 18278 players with 104 attributes. Some of them are IDs, urls and
 names, but most are numeric values (0-100 or 1-5) describing specific skills.
 
-##EDA and data manipulation
+## EDA and data manipulation
+
 For classification, some of attributes will not be useful in the analysis. I
 create players dataset with only useful variables.
 There is also a challenge - I have to choose player position dependent variable
@@ -76,11 +75,12 @@ glimpse(players)
 56 columns left after deleting columns not good for being predictors.
 
 Now let's compare player_positions and team_position
-```{r}
+```{r, fig.width=9}
 ggplot(data = players) + geom_bar(mapping = aes(x = team_position))
 ggplot(data = players) + geom_bar(mapping = aes(x = player_positions))
 ```
-Team_position looks much cleaner, there are much less levels. Unofortunately the
+
+Team_position looks much cleaner, because there are much less levels. Unofortunately the
 2 largest levels are SUB and RES, which are not positions on the field. They are
 refer to player status in the team (SUB is substitute and RES is injured or something
 similar). Deleting such huge part of players doesn't make sense.
@@ -99,12 +99,12 @@ sort(table(players$player_positions))
 
 ```
 
-There are many levels, but there are only field positions, so choose is as my
+There are many levels, but there are only field positions, so I choose it as my
 dependent variable.
 To make it more simple and easier to look at results, I will group players into 4
-main positions: Attacker, Midfielder, Defender and Goalkeeper.
+main positions: **Attacker**, **Midfielder**, **Defender** and **Goalkeeper**.
 
-```{r, include=FALSE}
+```{r}
 players[which(
   players$player_positions=="ST"|
     players$player_positions=="LW"|
@@ -114,12 +114,15 @@ players[which(
     players$player_positions=="LW,RW"|
     players$player_positions=="LM,ST"|
     players$player_positions=="CAM,ST"|
-    players$player_positions=="LM,RM,ST"|
+    players$player_positions=="CF,RW"|
     players$player_positions=="LW,ST"|
     players$player_positions=="RW,ST"|
-    players$player_positions=="LW,RW,ST"|
     players$player_positions=="CF,ST"|
+    players$player_positions=="CF,LW"|
+    players$player_positions=="CM,ST"|
     players$player_positions=="CAM,CF"|
+    players$player_positions=="LW,RW,ST"|
+    players$player_positions=="LM,RM,ST"|
     players$player_positions=="LM,LW,ST"|
     players$player_positions=="CAM,LM,ST"|
     players$player_positions=="RM,RW,ST"|
@@ -128,16 +131,13 @@ players[which(
     players$player_positions=="CAM,LW,ST"|
     players$player_positions=="CAM,CM,ST"|
     players$player_positions=="CF,RW,ST"|
-    players$player_positions=="CM,ST"|
     players$player_positions=="CF,LW,ST"|
     players$player_positions=="CF,LW,RW"|
-    players$player_positions=="CF,LW"|
     players$player_positions=="CAM,RW,ST"|
     players$player_positions=="CAM,CF,CM"|
     players$player_positions=="CAM,CF,LW"|
     players$player_positions=="CF,LM,ST"|
     players$player_positions=="CAM,CF,RW"|
-    players$player_positions=="CF,RW"|
     players$player_positions=="CF,LM,LW"|
     players$player_positions=="CF,RM,RW"|
     players$player_positions=="LM,RW,ST"|
@@ -166,26 +166,32 @@ players[which(
     players$player_positions=="LB,LM"|
     players$player_positions=="RB,RM"|
     players$player_positions=="LB,LWB"|
-    players$player_positions=="CB,CDM,CM"|
     players$player_positions=="RB,RWB"|
+    players$player_positions=="CDM,RB"|
+    players$player_positions=="CB,CM"|
+    players$player_positions=="CM,RB"|
+    players$player_positions=="CM,LB"|
+    players$player_positions=="LB,LW"|
+    players$player_positions=="CB,RM"|
+    players$player_positions=="CB,LWB"|
+    players$player_positions=="CDM,LB"|
+    players$player_positions=="RB,RW"|
+    players$player_positions=="LB,RM"|
+    players$player_positions=="CAM,RB"|
+    players$player_positions=="CB,RWB"|
+    players$player_positions=="CB,CDM,CM"|
     players$player_positions=="CB,LB,RB"|
     players$player_positions=="LB,LM,LWB"|
     players$player_positions=="RB,RM,RWB"|
     players$player_positions=="CB,CDM,RB"|
-    players$player_positions=="CDM,RB"|
     players$player_positions=="CDM,CM,RB"|
     players$player_positions=="LB,RB,RM"|
-    players$player_positions=="CB,CM"|
-    players$player_positions=="CM,RB"|
-    players$player_positions=="CM,LB"|
     players$player_positions=="LM,LW,RW"|
     players$player_positions=="CB,RB,RM"|
     players$player_positions=="LM,RB,RM"|
     players$player_positions=="CM,LB,LM"|
-    players$player_positions=="CDM,LB"|
     players$player_positions=="LB,LM,RM"|
     players$player_positions=="CB,LB,LWB"|
-    players$player_positions=="LB,LW"|
     players$player_positions=="CB,LB,LM"|
     players$player_positions=="LB,LM,LW"|
     players$player_positions=="CDM,LB,RB"|
@@ -193,24 +199,18 @@ players[which(
     players$player_positions=="CB,RB,RWB"|
     players$player_positions=="CB,CDM,LB"|
     players$player_positions=="LB,RB,RWB"|
-    players$player_positions=="CB,LWB"|
     players$player_positions=="CDM,CM,LB"|
-    players$player_positions=="RB,RW"|
     players$player_positions=="CDM,RB,RM"|
     players$player_positions=="LM,RM,RWB"|
-    players$player_positions=="CB,RWB"|
     players$player_positions=="RB,RM,RW"|
     players$player_positions=="LB,LWB,RB"|
     players$player_positions=="CDM,LB,LM"|
     players$player_positions=="RB,RM,ST"|
-    players$player_positions=="LB,RM"|
-    players$player_positions=="CAM,RB"|
     players$player_positions=="CM,LB,RB"|
     players$player_positions=="CB,CM,RB"|
     players$player_positions=="CAM,LB,LM"|
     players$player_positions=="CDM,RB,RWB"|
     players$player_positions=="LB,LW,RB"|
-    players$player_positions=="CB,RM"|
     players$player_positions=="CB,CM,LB"|
     players$player_positions=="LB,RB,RW"|
     players$player_positions=="CM,RB,RWB"|
@@ -236,27 +236,26 @@ players[which(
     players$player_positions=="CDM,CM"|
     players$player_positions=="LM,RM"|
     players$player_positions=="CAM,CM"|
-    players$player_positions=="CAM,CDM,CM"|
-    players$player_positions=="CAM,LM,RM"|
+    players$player_positions=="LWB,RM"|
     players$player_positions=="CAM,LM"|
     players$player_positions=="CAM,RM"|
     players$player_positions=="RM,RW"|
-    players$player_positions=="CAM,CM,LM"|
     players$player_positions=="CM,RM"|
     players$player_positions=="LM,LW"|
     players$player_positions=="CM,LM"|
-    players$player_positions=="CAM,CM,RM"|
-    players$player_positions=="CM,LM,RM"|
+    players$player_positions=="CDM,RWB"|
+    players$player_positions=="CDM,RM"|
     players$player_positions=="CAM,LW"|
     players$player_positions=="CAM,RW"|
-    players$player_positions=="LM,RM,RW"|
-    players$player_positions=="CAM,LW,RW"|
-    players$player_positions=="CAM,CM,RW"|
-    players$player_positions=="LM,LW,RM"|
-    players$player_positions=="CM,RB,RM"|
-    players$player_positions=="CDM,CM,RM"|
-    players$player_positions=="CAM,CM,RM"|
-    players$player_positions=="CDM,CM,LM"|
+    players$player_positions=="CF,RM"|
+    players$player_positions=="CF,LM"|
+    players$player_positions=="LW,RM"|
+    players$player_positions=="LM,RW"|
+    players$player_positions=="CM,LWB"|
+    players$player_positions=="CF,CM"|
+    players$player_positions=="CDM,LM"|
+    players$player_positions=="LW,LWB"|
+    players$player_positions=="LM,RWB"|
     players$player_positions=="CAM,CDM"|
     players$player_positions=="LW,RM,RW"|
     players$player_positions=="CF,LM,RM"|
@@ -265,39 +264,38 @@ players[which(
     players$player_positions=="CM,RW"|
     players$player_positions=="RM,RWB"|
     players$player_positions=="LM,LWB"|
-    players$player_positions=="CM,LW,RW"|
+    players$player_positions=="CM,RWB"|
     players$player_positions=="CM,LW"|
+    players$player_positions=="CM,LW,RW"|
     players$player_positions=="CAM,LM,LW"|
     players$player_positions=="CAM,CF,RM"|
     players$player_positions=="CAM,CF,LM"|
-    players$player_positions=="CF,RM"|
-    players$player_positions=="CF,LM"|
-    players$player_positions=="LW,RM"|
-    players$player_positions=="LM,RW"|
     players$player_positions=="LM,LWB,RM"|
-    players$player_positions=="CM,RWB"|
+    players$player_positions=="LM,RM,RW"|
+    players$player_positions=="CAM,LW,RW"|
+    players$player_positions=="CAM,CM,RW"|
+    players$player_positions=="LM,LW,RM"|
+    players$player_positions=="CM,RB,RM"|
+    players$player_positions=="CDM,CM,RM"|
+    players$player_positions=="CAM,CM,RM"|
+    players$player_positions=="CDM,CM,LM"|
     players$player_positions=="CM,LM,LW"|
     players$player_positions=="LWB,RWB"|
     players$player_positions=="CM,RM,RW"|
     players$player_positions=="CM,LM,ST"|
     players$player_positions=="RM,RWB,ST"|
     players$player_positions=="RM,RW,RWB"|
-    players$player_positions=="CM,LWB"|
     players$player_positions=="CF,CM,RM"|
-    players$player_positions=="CF,CM"|
-    players$player_positions=="CDM,LM"|
     players$player_positions=="CAM,LM,RW"|
-    players$player_positions=="LW,LWB"|
-    players$player_positions=="LM,RWB"|
     players$player_positions=="LM,LW,LWB"|
     players$player_positions=="CM,RM,ST"|
     players$player_positions=="CM,RM,RWB"|
     players$player_positions=="CM,LM,RW"|
     players$player_positions=="CM,LM,LWB"|
-    players$player_positions=="CDM,RWB"|
-    players$player_positions=="CDM,RM"|
     players$player_positions=="CAM,RM,RWB"|
     players$player_positions=="LM,LWB,RWB"|
+    players$player_positions=="CAM,CM,RM"|
+    players$player_positions=="CM,LM,RM"|
     players$player_positions=="CDM,LM,RM"|
     players$player_positions=="CDM,CM,RWB"|
     players$player_positions=="CDM,CM,LW"|
@@ -306,12 +304,14 @@ players[which(
     players$player_positions=="CAM,CDM,RM"|
     players$player_positions=="CAM,CDM,LM"|
     players$player_positions=="LWB,RM,RWB"|
-    players$player_positions=="LWB,RM"|
+    players$player_positions=="CAM,CDM,CM"|
+    players$player_positions=="CAM,LM,RM"|
     players$player_positions=="LM,RWB,ST"|
     players$player_positions=="CM,LWB,RWB"|
     players$player_positions=="CM,LW,RM"|
     players$player_positions=="CM,LW,LWB"|
     players$player_positions=="CF,CM,LM"|
+    players$player_positions=="CAM,CM,LM"|
     players$player_positions=="CDM,LM,LWB"|
     players$player_positions=="CDM,LM,LW"|
     players$player_positions=="CDM,CM,ST"|
@@ -345,14 +345,14 @@ helpful in the analysis.
 players <- players[-which(players$player_positions=="Others"),]
 ```
 
-I delete gk_kicking, gk_positioning, gk_diving, gk_handling,  gk_reflexes and
-gk_speed because they are already represented by other columns:
-goalkeeping_kicking, goalkeeping_positioning, goalkeeping_reflexes,
-goalkeeping_diving, goalkeeping_handling and movement_acceleration /
-movement_sprint_speed. Player_tags and player_traits are also unique values for some players -
-other players do not have tags and traits - that's why I will also delete them
-I delete team_position also, because it does not provide any additional
-information about position.
+I delete **gk_kicking**, **gk_positioning**, **gk_diving**, **gk_handling**, 
+**gk_reflexes** and **gk_speed**, because they are already represented by other columns:
+**goalkeeping_kicking**, **goalkeeping_positioning**, **goalkeeping_reflexes**,
+**goalkeeping_diving**, **goalkeeping_handling** and **movement_acceleration** /
+**movement_sprint_speed**. **Player_tags** and **player_traits** are also unique 
+values for some players - other players do not have tags and traits - that's why 
+I will also delete them. I delete **team_position** also, because it does not 
+provide any additional information about position.
 
 ```{r}
 players <- 
@@ -363,7 +363,7 @@ players <-
 ```
 
 Now let's look on the missing values:
-```{r}
+```{r, fig.width = 9}
 players %>% 
   md.pattern(rotate.names = TRUE)
 ```
@@ -414,7 +414,7 @@ players_factor_vars <-
   names()
 ```
 
-##Data division
+## Data division
 
 Now it's time to divide data into training and test set
 ```{r}
@@ -430,17 +430,20 @@ players_test <- players[-players_which_train,]
 ```
 
 The distribution of the target variable in both samples are very similar:
-```{r}
+```{r, echo=FALSE}
+cat("Train dataset distribution:")
 players_train$player_positions %>% 
   table() %>%
   prop.table()
 
-players_test$player_positions %>% 
+cat("\n")
+cat("Test dataset distribution:")
+(players_test$player_positions %>% 
   table() %>%
-  prop.table()
+  prop.table())
 ```
 Now let's look on the correlations between variables:
-``` {r}
+``` {r, fig.width=9}
 players_correlations <- 
   cor(players_train[,players_numeric_vars],
       use = "pairwise.complete.obs")
@@ -467,15 +470,15 @@ correlated_variables_80 <- findCorrelation(players_correlations,
 ```
 
 Before we start modelling, let's look on the factor variables:
-```{r}
+```{r echo=FALSE}
 ggplot(players, aes(x = preferred_foot)) + geom_bar()
 ggplot(players, aes(x = work_rate)) + geom_bar()
 ```
-We can see that there are much more players with the right foot preferred.
-Only `r sum(players$preferred_foot == "Left")/sum(players$preferred_foot == "Right")*100`
-of players prefer their left foot.
 
-Work rate is rate of working in attack and defense. For example, High/Low means that
+We can see that there are much more players with the right foot preferred.
+Only `r round(sum(players$preferred_foot == "Left")/sum(players$preferred_foot == "Right")*100,2)`% of players prefer their left foot.
+
+**Work rate** is rate of working in attack and defense. For example, High/Low means that
 player works hard in attack and does not work hard in the defense, but it is more
 mental that the real position on the field, so there are defenders with Low/Low etc.
 
@@ -483,43 +486,51 @@ We can see, that most of the players have Medium/Medium work rate. Other groups 
 smaller, but only Low/Low seems to be really small and may not provide efficient
 value to model. However, we can not add this group to another, so I will keep it.
 
-##Data modelling
+## Data modelling
+
 Now we are ready to try to run some models and predict players position on the field.
 
-###Logit model
+### Logit model
 
 I run multinomial logit model without variables with correlation higher than 0.8
 and without preferred_foot variable.
-```{r}
+```{r, results="hide"}
 players_mlogit1a <- multinom(player_positions ~ .,
                     data = players_train %>% 
                       dplyr::select(-c(all_of(correlated_variables_80),"preferred_foot")))
 
 players_mlogit1a_fitted <- predict(players_mlogit1a) 
+```
 
+```{r}
 table(players_mlogit1a_fitted,
       players_train$player_positions)
 ```
+
 Now I run multinomial logit model without variables with correlation higher than 0.9
 and without preferred_foot variable.
-```{r}
+```{r, results="hide"}
 players_mlogit1b <- multinom(player_positions ~ .,
                     data = players_train %>% 
                       dplyr::select(-c(all_of(correlated_variables_90),"preferred_foot")))
 
 players_mlogit1b_fitted <- predict(players_mlogit1b) 
+```
 
+```{r}
 table(players_mlogit1b_fitted,
       players_train$player_positions)
 ```
 
 And now I run multinomial logit model with every variable.
-```{r}
+```{r, results="hide"}
 players_mlogit2 <- multinom(player_positions ~ .,
                     data = players_train)
 
 players_mlogit2_fitted <- predict(players_mlogit2) 
+```
 
+```{r}
 table(players_mlogit2_fitted,
       players_train$player_positions)
 ```
@@ -534,7 +545,6 @@ lrtest(players_mlogit2)[5]
 The null hypothesis can be rejected on the 0.001 level in all models.
 
 Now I am comparing real and predicted values:
-
 ```{r}
 accuracy_multinom(predicted = players_mlogit1a_fitted, 
                   real = players_train$player_positions)
@@ -545,18 +555,59 @@ accuracy_multinom(predicted = players_mlogit1b_fitted,
 accuracy_multinom(predicted = players_mlogit2_fitted, 
                   real = players_train$player_positions)
 ```
-Multinomial logit model with all variables has the highest accuracy
-Accuracy is pretty high, but can it be higher? Let's find out.
-
-###KNN model
-
-I will start from the defining the training controls - it will be no 
-cross validation and 10-fold cross validation control. I will compare the models
-with and without cross validation.
 
 ```{r}
-control_nocv <- trainControl(method = "none")
+players_test$multinom1a <- predict(players_mlogit1a, 
+                                    newdata = players_test)
 
+conf_matrix_multinom1a  <- 
+  confusionMatrix(players_test$multinom1a,
+                players_test$player_positions)
+
+players_test$multinom1b <- predict(players_mlogit1b, 
+                                    newdata = players_test)
+
+conf_matrix_multinom1b  <-
+  confusionMatrix(players_test$multinom1b,
+                players_test$player_positions)
+
+players_test$multinom2  <- predict(players_mlogit2, 
+                                    newdata = players_test)
+
+conf_matrix_multinom2  <- 
+  confusionMatrix(players_test$multinom2,
+                players_test$player_positions)
+```
+
+And now I check accuracy on the test dataset:
+```{r echo=FALSE}
+cat("Accuracy of multinomial model 1a:",conf_matrix_multinom1a[[3]][1][[1]])
+cat("\nAccuracy of multinomial model 1b:",conf_matrix_multinom1b[[3]][1][[1]])
+cat("\nAccuracy of multinomial model 2:",conf_matrix_multinom2[[3]][1][[1]],"\n")
+
+cat("\nAccuracy of multinomial model 1a by position:\n")
+conf_matrix_multinom1a[[4]][,c(5,11)]
+
+cat("\nAccuracy of multinomial model 1b by position:\n")
+conf_matrix_multinom1b[[4]][,c(5,11)]
+
+cat("\nAccuracy of multinomial model 2 by position:\n")
+conf_matrix_multinom2[[4]][,c(5,11)]
+```
+
+Multinomial logit model with all variables has the highest average accuracy, 
+but looking on the accuracy by position, it is really hard to choose the best model.
+What is also important, model 1a has around 50 predictors less than model 2 and
+gives very similar results.
+Overall, accuracy is pretty high, but can it be higher? Let's find out.
+
+### KNN model
+
+I will start from the defining the training controls - it will be 2-fold 
+cross validation and 10-fold cross validation control. I will compare the models
+with both controls.
+
+```{r}
 control_cv2 <- trainControl(method = "cv",
                           number = 2,
                           classProbs = TRUE)
@@ -572,7 +623,7 @@ preferred_foot variable excluded).
 
 I try many k values to obtain possibly highest accuracy and scale all variables 
 to range [0, 1].
-```{r}
+```{r fig.width=4, fig.height=4}
 set.seed(987654321)
 
 test_k <- data.frame(k = seq(1, 99, 4))
@@ -617,14 +668,17 @@ plot(players_train_knn1b)
 plot(players_train_knn2a)
 plot(players_train_knn2b)
 ```
-```{r}
-players_train_knn1a$finalModel$k
-players_train_knn1b$finalModel$k
-players_train_knn2a$finalModel$k
-players_train_knn2b$finalModel$k
-```
 
-And let's look on the accuracy of each model:
+Let's look on k values selected in modelling:
+```{r echo=FALSE}
+cat("players_train_knn1a k value selected:",players_train_knn1a$finalModel$k)
+cat("\nplayers_train_knn1b k value selected:",players_train_knn1b$finalModel$k)
+cat("\nplayers_train_knn2a k value selected:",players_train_knn2a$finalModel$k)
+cat("\nplayers_train_knn2b k value selected:",players_train_knn2b$finalModel$k)
+```
+Models selected k values: 13, 9, 21 and 17, but all of them are quite similar accuracy.
+
+Let's look on the accuracy of each model:
 ```{r}
 players_test_forecasts <- 
   data.frame(players_train_knn1a = predict(players_train_knn1a,
@@ -634,80 +688,148 @@ players_test_forecasts <-
              players_train_knn2a = predict(players_train_knn2a,
                                           players_test),
              players_train_knn2b = predict(players_train_knn2b,
-                                                 players_test))
+                                           players_test))
 
 sapply(players_test_forecasts,
        function(x) accuracy_multinom(predicted = x,
                                         real = players_test$player_positions))
 ```
+It does not seem to give better result than multinomial logistic regression, but we can see,
+that again, model with all of variables gives better prediction. Additionally, 
+we can see that 10-fold cross validation give us slightly better results.
 
+Let's now try with Discriminant Analysis methods and LogitBoost method.
+I run 4 methods:
 
-###SVM model
+### - Shrinkage Discriminant Analysis
+```{r results="hide"}
+set.seed(12345)
 
-Training controls are already defined. I would like to try many parameters 
-values to find the best one so I create grids of parameters for polynomial and 
-radial basis kernel:
-```{r}
-svm_parametersPoly <- expand.grid(C = c(0.001, 0.01, 0.05, 0.1, 0.5, 1),
-                                  degree = 2:5, 
-                                  scale = 1)
-
-parametersC_sigma <- 
-  expand.grid(C = c(0.01, 0.05, 0.1, 0.5, 1, 5, 10, 25, 50, 100),
-              sigma = c(0.05, 0.1, 0.2, 0.5, 1, 10, 100, 1000))
+m_sda <- train(player_positions~.,
+               data=players_train,
+               method="sda", 
+               trControl=control_cv10,
+               preProcess = c("center","scale")) 
 ```
 
+### - High Dimensional Discriminant Analysis
 ```{r}
-set.seed(987654321)
+set.seed(12345)
 
-players.svm_poly <- train(player_positions ~ ., 
-                        data = players_train, 
-                        method = "svmPoly",
-                        tuneGrid = svm_parametersPoly,
-                        trControl = control_cv10,
-                        preProcess = c("scale"))
+m_hdda <- train(player_positions~.,
+               data=players_train,
+               method="hdda", 
+               trControl=control_cv10,
+               preProcess = c("center","scale")) 
+```
 
-players.svm_poly
+### - Penalized Discriminant Analysis
+```{R}
+set.seed(12345)
+m_pda <- train(player_positions~.,
+               data=players_train, 
+               method="pda",
+               trControl=control_cv10,
+               preProcess = c("center", "scale"))
 
-plot(players.svm_poly$finalModel)
+```
 
-players_test$fore_svm_poly <- predict(players.svm_poly, 
+### - LogitBoost Model
+```{r}
+set.seed(12345)
+m_LogitBoost <- train(player_positions~.,
+               data=players_train, 
+               method="LogitBoost",
+               trControl=control_cv10,
+               preProcess = c("center", "scale"))
+```
+
+
+Now I use computed models to predict positions:
+```{r}
+players_test$predicted_sda <- predict(m_sda, 
                                     newdata = players_test)
 
-confusionMatrix(players_test$fore_svm_poly,
+players_test$predicted_hdda <- predict(m_hdda, 
+                                    newdata = players_test)
+
+players_test$predicted_pda <- predict(m_pda, 
+                                    newdata = players_test)
+
+players_test$predicted_LogitBoost <- predict(m_LogitBoost, 
+                                    newdata = players_test)
+
+conf_matrix_sda <- 
+  confusionMatrix(players_test$predicted_sda,
                 players_test$player_positions)
 
-players.svm_Radial <- train(player_positions ~ .,
-                           data = players_train, 
-                           method = "svmRadial",
-                           tuneGrid = parametersC_sigma,
-                           trControl = control_cv10,
-                           preProcess = c("scale"))
-
-players.svm_Radial
-
-players.svm_Radial$finalModel
-
-plot(players.svm_Radial$finalModel)
-
-players_test$fore_svm_Radial <- predict(players.svm_Radial, 
-                                       newdata = players_test)
-
-confusionMatrix(players_test$fore_svm_Radial,
+conf_matrix_hdda <- 
+  confusionMatrix(players_test$predicted_hdda,
                 players_test$player_positions)
 
+conf_matrix_pda <- 
+  confusionMatrix(players_test$predicted_pda,
+                players_test$player_positions)
+
+conf_matrix_LogitBoost <- 
+  confusionMatrix(players_test$predicted_LogitBoost,
+                players_test$player_positions)
 ```
 
-
-
-
-
-
-
-
-
-
+Accurracies of each model:
 ```{r, echo=FALSE}
-plot(pressure)
+cat("Accuracy of Shrinkage Discriminant Analysis model:       ",conf_matrix_sda[[3]][1][[1]])
+
+cat("\nAccuracy of High Dimensional Discriminant Analysis model:",conf_matrix_hdda[[3]][1][[1]])
+
+cat("\nAccuracy of Penalized Discriminant Analysis model:       ",conf_matrix_pda[[3]][1][[1]])
+
+cat("\nAccuracy of LogitBoost model:                            ",conf_matrix_LogitBoost[[3]][1][[1]])
+
+cat("\n\nAccuracy of Shrinkage Discriminant Analysis model by position:\n")
+conf_matrix_sda[[4]][,c(5,11)]
+
+cat("\nAccuracy of High Dimensional Discriminant Analysis model by position:\n")
+conf_matrix_hdda[[4]][,c(5,11)]
+
+cat("\nAccuracy of Penalized Discriminant Analysis model by position:\n")
+conf_matrix_pda[[4]][,c(5,11)]
+
+cat("\nAccuracy of LogitBoost model by position:\n")
+conf_matrix_LogitBoost[[4]][,c(5,11)]
 ```
+Let's look on the accuracy boxplots, based on resamples accuracy.
+```{R}
+resample_results <- resamples(list(PDA=m_pda, SDA=m_sda, HDDA=m_hdda, 
+                                   KNN=players_train_knn2b, 
+                                   LogitBoost = m_LogitBoost))
+bwplot(resample_results , metric = "Accuracy")
+```
+
+And density plot of accuracies:
+```{r}
+densityplot(resample_results , metric = "Accuracy" ,auto.key = list(columns = 3))
+```
+
+The accuracies of the Shrinkage Discriminant Analysis model, Penalized Discriminant Analysis model and LogitBoost model are higher than best in best case of multinomial logistic regression. LogitBoost looks the best, but Shrinkage and Penalized Discriminant Analysis look also very good comparing to KNN and High Dimensional Discriminant Analysis.
+
+## Summary
+
+All of the models gave quite good results, so it was more difficult to see which 
+performs better. For sure, 10-fold cross validation made modelling more precise,
+so it is often worth to use some additional computing power to perform cross validation.
+
+In this case, best model was Logit boost, but from the players positions grouping
+perspective it should be considered to group positions in other way (for example
+defensive midfield, midfield and offensive midfield instead of only midfield).
+
+To sum up, 3 best computed models in the analysis were:
+
+- **LogitBoost**
+
+- **Shrinkage Discriminant Analysis**
+
+- **Penalized Discriminant Analysis**
+
+
 
