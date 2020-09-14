@@ -453,3 +453,13 @@ head(players_test_forecasts)
 sapply(players_test_forecasts,
        function(x) accuracy_multinom(predicted = x,
                                         real = players_test$player_positions))
+
+
+
+
+
+
+
+
+
+
