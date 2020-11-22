@@ -2,7 +2,9 @@
 title: "Football Players Classification"
 author: "Mateusz Majak"
 date: "13.09.2020"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 ```{r setup, include=FALSE}
 library(dplyr)
